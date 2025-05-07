@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Root Menu -->
+    <menuitem id="menu_dynamics_root"
+              name="Dynamics"
+              sequence="11"/>
+
+    <!-- Rides Menu -->
+    <menuitem id="menu_dynamics_ride"
+              name="Rides"
+              parent="menu_dynamics_root"
+              action="action_dynamics_ride"
+              sequence="10"/>
+
+    <!-- Sync Rides Menu -->
+    <menuitem id="menu_sync_rides"
+              name="Sync Rides"
+              parent="menu_dynamics_root"
+              action="action_sync_rides"
+              sequence="11"/>
+
+    <!-- Ride Map Menu -->
+    <menuitem id="menu_ride_map"
+              name="Ride Map"
+              parent="menu_dynamics_root"
+              action="action_ride_map"
+              sequence="12"/>
+</odoo>

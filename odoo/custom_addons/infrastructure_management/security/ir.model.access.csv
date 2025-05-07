@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_infrastructure_line,infrastructure.line,model_infrastructure_line,base.group_user,1,1,1,1
+access_infrastructure_line_type,infrastructure.line.type,model_infrastructure_line_type,base.group_user,1,1,1,1
+access_infrastructure_station,infrastructure.station,model_infrastructure_station,base.group_user,1,1,1,1
+access_infrastructure_line_station,infrastructure.line.station,model_infrastructure_line_station,base.group_user,1,1,1,1

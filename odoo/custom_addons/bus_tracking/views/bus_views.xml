@@ -1,0 +1,37 @@
+<odoo>
+    <record id="view_form_bus" model="ir.ui.view">
+        <field name="name">bus.form</field>
+        <field name="model">bus_tracking.bus</field>
+        <field name="arch" type="xml">
+            <form string="Bus">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="driver"/>
+                        <field name="latitude"/>
+                        <field name="longitude"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_tree_bus" model="ir.ui.view">
+        <field name="name">bus.tree</field>
+        <field name="model">bus_tracking.bus</field>
+        <field name="arch" type="xml">
+            <tree string="Bus">
+                <field name="name"/>
+                <field name="driver"/>
+                <field name="latitude"/>
+                <field name="longitude"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_bus_tracking" model="ir.actions.act_window">
+        <field name="name">Buses</field>
+        <field name="res_model">bus_tracking.bus</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+</odoo>

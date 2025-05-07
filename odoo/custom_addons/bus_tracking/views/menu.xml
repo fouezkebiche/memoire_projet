@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <menuitem id="menu_bus_tracking_root" name="Bus Tracking"/>
+    <menuitem id="menu_bus_tracking_map" name="Live Map" parent="menu_bus_tracking_root" action="action_bus_map"/>
+    <menuitem id="menu_bus_tracking_list" name="Bus List" parent="menu_bus_tracking_root" action="action_bus_tracking"/>
+</odoo>

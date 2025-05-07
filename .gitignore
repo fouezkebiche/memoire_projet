@@ -1,0 +1,15 @@
+*.pyc
+*.pyo
+__pycache__/
+*.log
+*.swp
+*.swo
+.idea/
+.vscode/
+*.egg-info/
+*.db
+.env
+.env.*
+.DS_Store
+node_modules/
+addons/.git/

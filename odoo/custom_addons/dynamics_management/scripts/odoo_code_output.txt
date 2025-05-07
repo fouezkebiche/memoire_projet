@@ -1,0 +1,657 @@
+
+
+
+
+
+
+
+
+// [Folder] models
+
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\dynamics_management\models\position.py
+from odoo import models, fields
+
+class DynamicsPosition(models.Model):
+    _name = 'dynamics.position'
+    _description = 'Dynamics Position'
+
+    lat = fields.Float(string='Latitude', digits=(16, 8), required=True)
+    lng = fields.Float(string='Longitude', digits=(16, 8), required=True)
+    location_type = fields.Selection(
+        [('LINE_STATION', 'Line Station'), ('INTER_STATION', 'Inter Station'), ('UNKNOWN', 'Unknown')],
+        string='Location Type'
+    )
+    ride = fields.Many2one('dynamics.ride', string='Ride', required=True)
+    timestamp = fields.Datetime(string='Timestamp', required=True)
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\dynamics_management\models\ride.py
+import requests
+import json
+import logging
+from datetime import datetime
+from odoo import models, fields, api
+from odoo.exceptions import UserError, ValidationError
+
+_logger = logging.getLogger(__name__)
+
+class DynamicsRide(models.Model):
+    _name = 'dynamics.ride'
+    _description = 'Dynamics Ride'
+
+    direction = fields.Selection(
+        [('GOING', 'Going'), ('RETURNING', 'Returning')],
+        string='Direction',
+        required=True
+    )
+    departure_datetime = fields.Datetime(string='Departure Datetime')
+    arrival_datetime = fields.Datetime(string='Arrival Datetime')
+    status = fields.Selection(
+        [('ON_GOING', 'On Going'), ('COMPLETED', 'Completed'), ('CANCELLED', 'Cancelled'), ('IDLE', 'Idle')],
+        string='Status',
+        default='IDLE'
+    )
+    lat = fields.Float(string='Latitude', digits=(16, 8))
+    lng = fields.Float(string='Longitude', digits=(16, 8))
+    location_type = fields.Selection(
+        [('LINE_STATION', 'Line Station'), ('INTER_STATION', 'Inter Station')],
+        string='Location Type'
+    )
+    location_id = fields.Integer(string='Location ID')
+    passengers = fields.Text(string='Passengers', default='[]')
+    line_id = fields.Many2one('infrastructure.line', string='Line', required=True)
+    driver_id = fields.Many2one('res.users', string='Driver')
+    vehicle_id = fields.Many2one('dynamics.vehicle', string='Vehicle')
+    external_id = fields.Integer(string='External API ID', readonly=True)
+    position_id = fields.Many2one('dynamics.position', string='Position')
+
+    @api.constrains('lat', 'lng')
+    def _check_coordinates(self):
+        for record in self:
+            if record.lat and (record.lat < -90 or record.lat > 90):
+                raise ValidationError("Latitude must be between -90 and 90 degrees.")
+            if record.lng and (record.lng < -180 or record.lng > 180):
+                raise ValidationError("Longitude must be between -180 and 180 degrees.")
+
+    @api.constrains('passengers')
+    def _check_passengers(self):
+        for record in self:
+            if record.passengers:
+                try:
+                    json.loads(record.passengers)
+                except json.JSONDecodeError:
+                    raise ValidationError("Passengers must be valid JSON (e.g., [1, 2, 3]).")
+
+    def _prepare_api_data(self):
+        return {
+            'id': self.external_id or None,
+            'direction': self.direction,
+            'departureDatetime': self.departure_datetime.isoformat() if self.departure_datetime else None,
+            'arrivalDatetime': self.arrival_datetime.isoformat() if self.arrival_datetime else None,
+            'status': self.status,
+            'lat': self.lat or None,
+            'lng': self.lng or None,
+            'positionType': self.location_type or None,
+            'passengers': json.loads(self.passengers) if self.passengers else [],
+            'line': self.line_id.external_id or self.line_id.id,
+            'driver': self.driver_id.id if self.driver_id else None,
+            'locationId': self.location_id or None,
+            'vehicle': self.vehicle_id.id if self.vehicle_id else None,
+            'position': self.position_id.id if self.position_id else None
+        }
+
+    @api.model
+    def create(self, vals):
+        if vals.get('passengers'):
+            try:
+                json.loads(vals['passengers'])
+            except json.JSONDecodeError:
+                raise UserError("Passengers must be valid JSON (e.g., [1, 2, 3]).")
+
+        record = super(DynamicsRide, self).create(vals)
+
+        api_data = record._prepare_api_data()
+        try:
+            api_url = 'http://41.111.178.14:8080/ride'
+            payload = json.dumps(api_data, ensure_ascii=False).encode('utf-8')
+            _logger.info("Sending POST request to: %s with payload: %s", api_url, payload.decode('utf-8'))
+            response = requests.post(
+                api_url,
+                headers={'Content-Type': 'application/json; charset=utf-8'},
+                data=payload
+            )
+            _logger.info("API POST %s response: %s (Status: %s)", api_url, response.text, response.status_code)
+            if response.status_code == 201:
+                response_data = response.json()
+                record.write({'external_id': response_data.get('id')})
+            else:
+                raise UserError(f"Failed to create ride in API: {response.text} (Status: {response.status_code})")
+        except requests.RequestException as e:
+            _logger.error("API POST request failed: %s", str(e))
+            raise UserError(f"API request failed: {str(e)}")
+
+        return record
+
+    def write(self, vals):
+        if vals.get('passengers'):
+            try:
+                json.loads(vals['passengers'])
+            except json.JSONDecodeError:
+                raise UserError("Passengers must be valid JSON (e.g., [1, 2, 3]).")
+
+        result = super(DynamicsRide, self).write(vals)
+
+        for record in self:
+            if not record.external_id:
+                _logger.warning("Skipping API update for ride %s: No external_id.", record.id)
+                continue
+
+            api_data = record._prepare_api_data()
+            try:
+                api_url = f'http://41.111.178.14:8080/ride/{record.external_id}'
+                payload = json.dumps(api_data, ensure_ascii=False).encode('utf-8')
+                _logger.info("Sending PUT request to: %s with payload: %s", api_url, payload.decode('utf-8'))
+                response = requests.put(
+                    api_url,
+                    headers={'Content-Type': 'application/json; charset=utf-8'},
+                    data=payload
+                )
+                _logger.info("API PUT %s response: %s (Status: %s)", api_url, response.text, response.status_code)
+                if response.status_code not in (200, 201, 204):
+                    raise UserError(f"Failed to update ride in API: {response.text} (Status: {response.status_code})")
+            except requests.RequestException as e:
+                _logger.error("API PUT request failed: %s", str(e))
+                raise UserError(f"API request failed: {str(e)}")
+
+        return result
+
+    def unlink(self):
+        for record in self:
+            if record.external_id:
+                try:
+                    api_url = f'http://41.111.178.14:8080/ride/{record.external_id}/cancel'
+                    _logger.info("Sending PUT request to cancel ride: %s", api_url)
+                    response = requests.put(
+                        api_url,
+                        headers={'Content-Type': 'application/json'}
+                    )
+                    _logger.info("API PUT %s response: %s (Status: %s)", api_url, response.text, response.status_code)
+                    if response.status_code not in (200, 201, 204):
+                        _logger.warning("Failed to cancel ride %s in API: %s (Status: %s). Proceeding with Odoo deletion.", 
+                                        record.id, response.text, response.status_code)
+                except requests.RequestException as e:
+                    _logger.error("API PUT request failed for ride %s: %s. Proceeding with Odoo deletion.", record.id, str(e))
+
+        return super(DynamicsRide, self).unlink()
+
+    @api.model
+    def sync_rides_from_api(self):
+        try:
+            base_url = 'http://41.111.178.14:8080/ride'
+            max_id = 150  # Adjust based on expected number of rides
+            rides = []
+            synced_rides = 0
+
+            # Fetch rides by ID
+            for ride_id in range(1, max_id + 1):
+                try:
+                    api_url = f'{base_url}/{ride_id}'
+                    _logger.info("Sending GET request to: %s", api_url)
+                    response = requests.get(
+                        api_url,
+                        headers={'Content-Type': 'application/json'},
+                        timeout=5
+                    )
+                    _logger.info("API GET %s response: %s (Status: %s)", api_url, response.text, response.status_code)
+                    
+                    if response.status_code == 200:
+                        rides.append(response.json())
+                    elif response.status_code == 404:
+                        _logger.info("Ride %s not found, skipping.", ride_id)
+                        continue
+                    else:
+                        _logger.warning("Failed to fetch ride %s: %s (Status: %s)", ride_id, response.text, response.status_code)
+                        continue
+                except requests.RequestException as e:
+                    _logger.error("API GET request failed for ride %s: %s", ride_id, str(e))
+                    continue
+
+            if not rides:
+                _logger.warning("No rides fetched from API.")
+                raise UserError("No rides could be fetched from the API.")
+
+            _logger.info("Fetched %s rides from API.", len(rides))
+
+            for ride in rides:
+                try:
+                    # Handle line_id
+                    line_external_id = ride.get('line')
+                    line = self.env['infrastructure.line'].search(
+                        [('external_id', '=', line_external_id)], limit=1
+                    )
+                    if not line:
+                        _logger.warning("Line with external_id %s not found for ride %s. Creating placeholder.", 
+                                        line_external_id, ride.get('id'))
+                        line = self.env['infrastructure.line'].create({
+                            'name': f'Line {line_external_id} (Auto-created)',
+                            'external_id': line_external_id
+                        })
+
+                    # Handle datetime format
+                    departure_dt = ride.get('departureDatetime')
+                    arrival_dt = ride.get('arrivalDatetime')
+                    if departure_dt:
+                        try:
+                            departure_dt = datetime.fromisoformat(departure_dt.replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M:%S')
+                        except ValueError:
+                            _logger.warning("Invalid departure datetime format for ride %s: %s", ride.get('id'), departure_dt)
+                            departure_dt = None
+                    if arrival_dt:
+                        try:
+                            arrival_dt = datetime.fromisoformat(arrival_dt.replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M:%S')
+                        except ValueError:
+                            _logger.warning("Invalid arrival datetime format for ride %s: %s", ride.get('id'), arrival_dt)
+                            arrival_dt = None
+
+                    # Handle status
+                    status = ride.get('status')
+                    if status == 'FINISHED':
+                        status = 'COMPLETED'  # Map FINISHED to COMPLETED
+                    if status not in ['ON_GOING', 'COMPLETED', 'CANCELLED', 'IDLE']:
+                        _logger.warning("Invalid status for ride %s: %s. Setting to IDLE.", ride.get('id'), status)
+                        status = 'IDLE'
+
+                    # Handle vehicle
+                    vehicle_id = ride.get('vehicle')
+                    vehicle = self.env['dynamics.vehicle'].search(
+                        [('id', '=', vehicle_id)], limit=1
+                    ) if vehicle_id else None
+
+                    # Handle position
+                    position_id = ride.get('position')
+                    position = self.env['dynamics.position'].search(
+                        [('id', '=', position_id)], limit=1
+                    ) if position_id else None
+
+                    ride_data = {
+                        'direction': ride.get('direction'),
+                        'departure_datetime': departure_dt,
+                        'arrival_datetime': arrival_dt,
+                        'status': status,
+                        'lat': ride.get('lat', 0.0),
+                        'lng': ride.get('lng', 0.0),
+                        'location_type': ride.get('positionType'),
+                        'passengers': json.dumps(ride.get('passengers', [])),
+                        'line_id': line.id,
+                        'vehicle_id': vehicle.id if vehicle else None,
+                        'external_id': ride.get('id'),
+                        'location_id': ride.get('locationId'),
+                        'position_id': position.id if position else None
+                    }
+
+                    existing_ride = self.search([('external_id', '=', ride.get('id'))], limit=1)
+                    if existing_ride:
+                        existing_ride.write(ride_data)
+                        _logger.info("Updated ride %s in Odoo.", ride.get('id'))
+                    else:
+                        self.create(ride_data)
+                        _logger.info("Created ride %s in Odoo.", ride.get('id'))
+                    synced_rides += 1
+
+                except Exception as e:
+                    _logger.error("Failed to sync ride %s: %s", ride.get('id', 'Unknown'), str(e))
+                    continue
+
+            _logger.info("Successfully synced %s rides.", synced_rides)
+            if synced_rides < len(rides):
+                _logger.warning("Only %s out of %s rides were synced due to errors.", synced_rides, len(rides))
+
+        except Exception as e:
+            _logger.error("Sync rides failed: %s", str(e))
+            raise UserError(f"Failed to sync rides: {str(e)}")
+
+    @api.model
+    def get_ongoing_rides(self):
+        """Fetch ONGOING rides with valid lat/lng."""
+        try:
+            rides = self.search([
+                ('status', '=', 'ON_GOING'),
+                ('lat', '!=', False),
+                ('lng', '!=', False)
+            ])
+            result = []
+            for ride in rides:
+                ride_data = {
+                    'external_id': ride.external_id,
+                    'direction': ride.direction,
+                    'line_name': ride.line_id.name if ride.line_id else "Unknown",
+                    'vehicle_plate': ride.vehicle_id.plate_number if ride.vehicle_id else "Unknown",
+                    'lat': ride.lat,
+                    'lng': ride.lng
+                }
+                result.append(ride_data)
+            _logger.info("Fetched %s ONGOING rides with valid coordinates.", len(result))
+            return result
+        except Exception as e:
+            _logger.error("Failed to fetch ONGOING rides: %s", str(e))
+            raise UserError(f"Failed to fetch ONGOING rides: {str(e)}")
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\dynamics_management\models\vehicle.py
+from odoo import models, fields
+
+class DynamicsVehicle(models.Model):
+    _name = 'dynamics.vehicle'
+    _description = 'Dynamics Vehicle'
+
+    plate_number = fields.Char(string='Plate Number', required=True)
+    brand = fields.Char(string='Brand')
+    model = fields.Char(string='Model')
+    registration_number = fields.Char(string='Registration Number')
+    num_of_seats = fields.Integer(string='Number of Seats')
+    vehicle_owner = fields.Many2one('res.partner', string='Vehicle Owner')
+    drivers = fields.Text(string='Drivers', default='[]')
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\dynamics_management\models\__init__.py
+from . import ride
+from . import position
+from . import vehicle
+
+
+
+
+
+
+
+
+
+// [Folder] security
+
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\dynamics_management\security\ir.model.access.csv
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_dynamics_ride,dynamics.ride,model_dynamics_ride,base.group_user,1,1,1,1
+access_dynamics_position,dynamics.position,model_dynamics_position,base.group_user,1,1,1,1
+access_dynamics_vehicle,dynamics.vehicle,model_dynamics_vehicle,base.group_user,1,1,1,1
+
+
+
+
+
+
+
+
+
+// [Folder] static
+
+
+
+
+
+
+
+
+//   [Folder] src
+
+
+
+
+
+
+
+
+//     [Folder] xml
+
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\dynamics_management\static\src\xml\ride_map_templates.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="dynamics_management.RideMapTemplate">
+        <div class="o_ride_map_container" style="height: 100%; width: 100%;">
+            <div t-ref="map" id="ride_map" style="height: 600px; width: 100%;"></div>
+        </div>
+    </t>
+</templates>
+
+
+
+
+
+
+
+
+
+
+
+
+
+// [Folder] views
+
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\dynamics_management\views\menu.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Root Menu -->
+    <menuitem id="menu_dynamics_root"
+              name="Dynamics"
+              sequence="11"/>
+
+    <!-- Rides Menu -->
+    <menuitem id="menu_dynamics_ride"
+              name="Rides"
+              parent="menu_dynamics_root"
+              action="action_dynamics_ride"
+              sequence="10"/>
+
+    <!-- Sync Rides Menu -->
+    <menuitem id="menu_sync_rides"
+              name="Sync Rides"
+              parent="menu_dynamics_root"
+              action="action_sync_rides"
+              sequence="11"/>
+
+    <!-- Ride Map Menu -->
+    <menuitem id="menu_ride_map"
+              name="Ride Map"
+              parent="menu_dynamics_root"
+              action="action_ride_map"
+              sequence="12"/>
+</odoo>
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\dynamics_management\views\ride_map_action.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="action_ride_map" model="ir.actions.client">
+        <field name="name">Ride Map</field>
+        <field name="tag">ride_map_tag</field>
+    </record>
+</odoo>
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\dynamics_management\views\ride_views.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Tree View for Rides -->
+    <record id="view_dynamics_ride_tree" model="ir.ui.view">
+        <field name="name">dynamics.ride.tree</field>
+        <field name="model">dynamics.ride</field>
+        <field name="arch" type="xml">
+            <tree string="Rides">
+                <field name="direction"/>
+                <field name="departure_datetime"/>
+                <field name="arrival_datetime"/>
+                <field name="status"/>
+                <field name="lat"/>
+                <field name="lng"/>
+                <field name="location_type"/>
+                <field name="line_id"/>
+                <field name="external_id" readonly="1"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form View for Rides -->
+    <record id="view_dynamics_ride_form" model="ir.ui.view">
+        <field name="name">dynamics.ride.form</field>
+        <field name="model">dynamics.ride</field>
+        <field name="arch" type="xml">
+            <form string="Ride">
+                <sheet>
+                    <group>
+                        <group string="Ride Details">
+                            <field name="direction" required="1"/>
+                            <field name="departure_datetime"/>
+                            <field name="arrival_datetime"/>
+                            <field name="status"/>
+                            <field name="lat"/>
+                            <field name="lng"/>
+                            <field name="location_type"/>
+                            <field name="passengers"/>
+                            <field name="external_id" readonly="1"/>
+                        </group>
+                        <group string="References">
+                            <field name="line_id" required="1" options="{'no_create': True, 'no_open': True}"/>
+                            <field name="driver_id" options="{'no_create': True, 'no_open': True}"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search View for Rides -->
+    <record id="view_dynamics_ride_search" model="ir.ui.view">
+        <field name="name">dynamics.ride.search</field>
+        <field name="model">dynamics.ride</field>
+        <field name="arch" type="xml">
+            <search string="Rides">
+                <field name="line_id"/>
+                <field name="external_id"/>
+                <filter string="Going Direction" name="going_direction" domain="[('direction', '=', 'GOING')]"/>
+                <filter string="Returning Direction" name="returning_direction" domain="[('direction', '=', 'RETURNING')]"/>
+                <filter string="On Going" name="on_going" domain="[('status', '=', 'ON_GOING')]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Line" name="group_by_line" context="{'group_by': 'line_id'}"/>
+                    <filter string="Status" name="group_by_status" context="{'group_by': 'status'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action for Rides -->
+    <record id="action_dynamics_ride" model="ir.actions.act_window">
+        <field name="name">Rides</field>
+        <field name="res_model">dynamics.ride</field>
+        <field name="view_mode">tree,form</field>
+        <field name="view_id" ref="view_dynamics_ride_tree"/>
+        <field name="search_view_id" ref="view_dynamics_ride_search"/>
+    </record>
+
+    <!-- Action for Sync Rides -->
+    <record id="action_sync_rides" model="ir.actions.server">
+        <field name="name">Sync Rides from API</field>
+        <field name="model_id" ref="model_dynamics_ride"/>
+        <field name="state">code</field>
+        <field name="code">
+            action = env['dynamics.ride'].sync_rides_from_api()
+        </field>
+    </record>
+</odoo>
+
+
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\dynamics_management\__init__.py
+from . import models
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\dynamics_management\__manifest__.py
+{
+    'name': 'Dynamics Management',
+    'version': '1.0',
+    'summary': 'Manage rides and their positions',
+    'description': 'A module to manage rides, their positions, and integrate with the Dynamics API.',
+    'category': 'Tools',
+    'author': 'Your Name',
+    'depends': ['base', 'web', 'infrastructure_management'],
+    'data': [
+        'security/ir.model.access.csv',
+        'views/ride_views.xml',
+        'views/ride_map_action.xml',
+        'views/menu.xml',
+    ],
+    'assets': {
+        'web.assets_backend': [
+            'dynamics_management/static/src/js/ride_map.js',
+            'dynamics_management/static/src/xml/ride_map_templates.xml',
+            'dynamics_management/static/src/css/ride_map.css',
+            'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+            'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+        ],
+    },
+    'installable': True,
+    'application': True,
+    'license': 'LGPL-3',
+}

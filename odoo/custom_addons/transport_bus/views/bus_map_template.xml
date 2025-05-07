@@ -1,0 +1,72 @@
+<odoo>
+    <template id="bus_map_template" name="Bus Map Page">
+        <t t-call="web.layout">
+            <t t-set="json" t-value="buses_json"/>
+            <div class="container">
+                <h2>🚌 Live Bus Tracking</h2>
+                <div id="map" style="height: 500px; width: 100%;"></div>
+            </div>
+
+            <!-- Leaflet CDN -->
+            <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+            <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+            <script>
+                document.addEventListener("DOMContentLoaded", function () {
+                    const map = L.map('map').setView([36.365, 6.6147], 14);
+
+                    // Add base map layer
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '&amp;copy; OpenStreetMap contributors'
+                    }).addTo(map);
+
+                    // Add static station markers
+                    const route = [
+                        
+                    ];
+
+                    route.forEach(point => {
+                        L.marker([point.lat, point.lon])
+                            .addTo(map)
+                            .bindTooltip(point.name, { permanent: true, direction: "top" });
+                    });
+
+                    // Bus icon setup
+                    const busIcon = L.icon({
+                        iconUrl: 'https://img.icons8.com/emoji/48/bus-emoji.png',
+                        iconSize: [35, 35],
+                        iconAnchor: [17, 34],
+                        popupAnchor: [0, -30]
+                    });
+
+                    // Insert buses from controller data
+                    const buses = <t t-raw="json"/>;
+                    console.log("Loaded buses:", buses);  // For debugging
+
+                    buses.forEach(bus => {
+                        const marker = L.marker([bus.lat, bus.lon], { icon: busIcon })
+                            .addTo(map)
+                            .bindPopup(`🚌 <strong>${bus.bus_number}</strong><br />👨‍✈️ ${bus.driver}`)
+                            .bindTooltip(bus.bus_number, {
+                                permanent: true,
+                                direction: 'top',
+                                offset: [0, -20],
+                                className: 'bus-label'
+                            });
+                    });
+                });
+            </script>
+
+            <style>
+                .leaflet-tooltip.bus-label {
+                    background: #007bff;
+                    color: white;
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    font-weight: bold;
+                    font-size: 13px;
+                }
+            </style>
+        </t>
+    </template>
+</odoo>

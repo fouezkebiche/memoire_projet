@@ -1,0 +1,19 @@
+.o_bus_map_container {
+    position: relative;
+    height: 100%;
+    width: 100%;
+}
+
+#map {
+    min-height: 600px;
+    z-index: 0;
+}
+
+.leaflet-tooltip {
+    background-color: #007bff;
+    color: white;
+    font-weight: bold;
+    border-radius: 5px;
+    padding: 4px 8px;
+    box-shadow: 0 0 6px rgba(0,0,0,0.3);
+}

@@ -1,0 +1,64 @@
+<odoo>
+    <!-- ACTION URL FOR MAP -->
+    <record id="action_bus_map_page" model="ir.actions.act_url">
+        <field name="name">Bus Map</field>
+        <field name="url">/bus/map</field>
+        <field name="target">self</field>
+    </record>
+
+    <!-- FORM VIEW -->
+    <record id="view_transport_bus_form" model="ir.ui.view">
+        <field name="name">transport.bus.form</field>
+        <field name="model">transport.bus</field>
+        <field name="arch" type="xml">
+            <form string="Bus">
+                <sheet>
+                    <group>
+                        <field name="bus_number"/>
+                        <field name="driver"/>
+                        <field name="latitude"/>
+                        <field name="longitude"/>
+                        <field name="active"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- TREE VIEW -->
+    <record id="view_transport_bus_tree" model="ir.ui.view">
+        <field name="name">transport.bus.tree</field>
+        <field name="model">transport.bus</field>
+        <field name="arch" type="xml">
+            <tree string="Buses">
+                <field name="bus_number"/>
+                <field name="driver"/>
+                <field name="latitude"/>
+                <field name="longitude"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ACTION -->
+    <record id="action_transport_bus" model="ir.actions.act_window">
+        <field name="name">Buses</field>
+        <field name="res_model">transport.bus</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- MENU ROOT -->
+    <menuitem id="menu_transport_root" name="Transport" sequence="1"/>
+
+    <!-- MENU BUSES -->
+    <menuitem id="menu_transport_bus" name="Buses"
+              parent="menu_transport_root"
+              action="action_transport_bus"
+              sequence="1"/>
+
+    <!-- MENU MAP -->
+    <menuitem id="menu_bus_map" name="Map"
+              parent="menu_transport_root"
+              sequence="2"
+              action="action_bus_map_page"/>
+</odoo>

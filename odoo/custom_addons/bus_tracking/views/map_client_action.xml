@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="action_bus_map" model="ir.actions.client">
+        <field name="name">Bus Map</field>
+        <field name="tag">bus_map_tag</field>
+    </record>
+</odoo>

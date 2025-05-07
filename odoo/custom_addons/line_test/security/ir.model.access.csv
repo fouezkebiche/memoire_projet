@@ -1,0 +1,10 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_line_management_user,line.management.user,model_line_management,base.group_user,1,1,1,0
+access_line_management_manager,line.management.manager,model_line_management,base.group_system,1,1,1,1
+access_line_schedule_user,line.schedule.user,model_line_schedule,base.group_user,1,1,1,0
+access_line_schedule_manager,line.schedule.manager,model_line_schedule,base.group_system,1,1,1,1
+access_line_station_user,line.station.user,model_line_station,base.group_user,1,1,1,0
+access_line_station_manager,line.station.manager,model_line_station,base.group_system,1,1,1,1
+
+
+

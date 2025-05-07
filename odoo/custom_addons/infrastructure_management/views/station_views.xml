@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Tree View -->
+    <record id="view_infrastructure_station_tree" model="ir.ui.view">
+        <field name="name">infrastructure.station.tree</field>
+        <field name="model">infrastructure.station</field>
+        <field name="arch" type="xml">
+            <tree string="Stations">
+                <field name="name_en"/>
+                <field name="name_ar"/>
+                <field name="name_fr"/>
+                <field name="latitude"/>
+                <field name="longitude"/>
+                <field name="external_id" readonly="1"/>
+                <field name="line_ids" widget="many2many_tags"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="view_infrastructure_station_form" model="ir.ui.view">
+        <field name="name">infrastructure.station.form</field>
+        <field name="model">infrastructure.station</field>
+        <field name="arch" type="xml">
+            <form string="Station">
+                <sheet>
+                    <group>
+                        <group string="Station Details">
+                            <field name="name_ar" required="1"/>
+                            <field name="name_en" required="1"/>
+                            <field name="name_fr" required="1"/>
+                            <field name="latitude"/>
+                            <field name="longitude"/>
+                            <field name="external_id" readonly="1"/>
+                        </group>
+                        <group string="Associated Lines">
+                            <field name="line_ids" widget="many2many_tags" options="{'no_create': True, 'no_open': True}"/>
+                        </group>
+                    </group>
+                    <group string="API Data">
+                        <field name="paths" widget="char" placeholder='e.g., []'/>
+                        <field name="changes" widget="char" placeholder='e.g., {}'/>
+                        <field name="schedule" widget="char" placeholder='e.g., ["08:00", "09:00"]'/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="view_infrastructure_station_search" model="ir.ui.view">
+        <field name="name">infrastructure.station.search</field>
+        <field name="model">infrastructure.station</field>
+        <field name="arch" type="xml">
+            <search string="Stations">
+                <field name="name_en"/>
+                <field name="name_ar"/>
+                <field name="name_fr"/>
+                <field name="external_id"/>
+                <filter string="With External ID" name="with_external_id" domain="[('external_id', '!=', False)]"/>
+                <filter string="Without External ID" name="without_external_id" domain="[('external_id', '=', False)]"/>
+                <group expand="0" string="Group By">
+                    <filter string="English Name" name="group_by_name_en" context="{'group_by': 'name_en'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_infrastructure_station" model="ir.actions.act_window">
+        <field name="name">Stations</field>
+        <field name="res_model">infrastructure.station</field>
+        <field name="view_mode">tree,form</field>
+        <field name="view_id" ref="view_infrastructure_station_tree"/>
+        <field name="search_view_id" ref="view_infrastructure_station_search"/>
+    </record>
+</odoo>

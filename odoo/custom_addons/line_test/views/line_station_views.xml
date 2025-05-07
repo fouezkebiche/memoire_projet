@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Tree View -->
+    <record id="view_line_station_tree" model="ir.ui.view">
+        <field name="name">line.station.tree</field>
+        <field name="model">line.station</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="line_id"/>
+                <field name="station_name_en"/>
+                <field name="order"/>
+                <field name="direction"/>
+                <field name="lat"/>
+                <field name="lng"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="view_line_station_form" model="ir.ui.view">
+        <field name="name">line.station.form</field>
+        <field name="model">line.station</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="sync_line_stations_from_api" type="object" string="Sync Now" class="oe_highlight"/>
+                </header>
+                <sheet>
+                    <group string="Basic Information" col="4">
+                        <field name="line_id"/>
+                        <field name="order"/>
+                        <field name="stop_duration"/>
+                        <field name="direction"/>
+                    </group>
+                    <group string="Station Details" col="4">
+                        <field name="station_name_en"/>
+                        <field name="station_name_ar"/>
+                        <field name="station_name_fr"/>
+                        <field name="lat"/>
+                        <field name="lng"/>
+                        <field name="radius"/>
+                    </group>
+                    <group string="Additional Information" col="4">
+                        <field name="alertable"/>
+                        <field name="efficient"/>
+                        <field name="duration"/>
+                        <field name="api_id" readonly="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="view_line_station_action" model="ir.actions.act_window">
+        <field name="name">Line Stations</field>
+        <field name="res_model">line.station</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- Menu -->
+    <menuitem id="line_station_menu" name="Line Stations" parent="line_management_menu_root" action="view_line_station_action" sequence="15"/>
+</odoo>

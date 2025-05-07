@@ -1,0 +1,19 @@
+.o_ride_map_container {
+    height: 100%;
+    width: 100%;
+}
+
+#ride_map {
+    height: 600px;
+    width: 100%;
+    z-index: 1;
+}
+
+.o_action .o_content {
+    padding: 0 !important;
+    height: 100vh;
+}
+
+.leaflet-control {
+    z-index: 1000;
+}

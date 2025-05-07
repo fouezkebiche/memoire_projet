@@ -1,0 +1,49 @@
+.o_station_map_container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+#map {
+    width: 100%;
+    height: 600px;
+}
+
+.custom-station-popup .leaflet-popup-content-wrapper {
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    padding: 0;
+}
+
+.custom-station-popup .leaflet-popup-content {
+    margin: 0;
+}
+
+.station-popup {
+    padding: 15px;
+}
+
+.station-popup h3 {
+    margin: 0 0 10px;
+    font-size: 18px;
+    color: #333;
+}
+
+.station-popup .popup-content {
+    font-size: 14px;
+    color: #555;
+}
+
+.station-popup .popup-content p {
+    margin: 5px 0;
+}
+
+.station-popup .popup-content strong {
+    color: #000;
+    font-weight: 600;
+}
+
+.custom-station-popup .leaflet-popup-tip {
+    background: #ffffff;
+}

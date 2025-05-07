@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Form View for Infrastructure Line -->
+        <record id="infrastructure_line_form_view" model="ir.ui.view">
+            <field name="name">infrastructure.line.form</field>
+            <field name="model">infrastructure.line</field>
+            <field name="arch" type="xml">
+                <form string="Infrastructure Line">
+                    <sheet>
+                        <group>
+                            <field name="code" required="1"/>
+                            <field name="color" required="1" widget="color"/>
+                            <field name="line_type_id" required="1" options="{'no_create': True, 'no_open': True}"/>
+                            <field name="enterprise_code" required="1"/>
+                            <field name="departure_station_id" required="1" options="{'no_create': True, 'no_open': True}"/>
+                            <field name="terminus_station_id" required="1" options="{'no_create': True, 'no_open': True}"/>
+                            <field name="schedule"/>
+                            <field name="external_id" readonly="1"/>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- Tree View for Infrastructure Line -->
+        <record id="infrastructure_line_tree_view" model="ir.ui.view">
+            <field name="name">infrastructure.line.tree</field>
+            <field name="model">infrastructure.line</field>
+            <field name="arch" type="xml">
+                <tree string="Infrastructure Lines">
+                    <field name="code"/>
+                    <field name="color" widget="color"/>
+                    <field name="line_type_id"/>
+                    <field name="enterprise_code"/>
+                    <field name="departure_station_id"/>
+                    <field name="terminus_station_id"/>
+                    <field name="schedule"/>
+                    <field name="external_id"/>
+                </tree>
+            </field>
+        </record>
+
+        <!-- Action for Infrastructure Line -->
+        <record id="action_infrastructure_line" model="ir.actions.act_window">
+            <field name="name">Infrastructure Lines</field>
+            <field name="res_model">infrastructure.line</field>
+            <field name="view_mode">tree,form</field>
+            <field name="view_id" ref="infrastructure_line_tree_view"/>
+        </record>
+
+        <!-- Action for Sync Lines -->
+        <record id="action_sync_lines" model="ir.actions.server">
+            <field name="name">Sync Lines from API</field>
+            <field name="model_id" ref="model_infrastructure_line"/>
+            <field name="state">code</field>
+            <field name="code">
+                action = env['infrastructure.line'].sync_lines_from_api()
+            </field>
+        </record>
+    </data>
+</odoo>

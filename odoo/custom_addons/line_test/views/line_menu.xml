@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <menuitem id="line_management_menu_root" name="Line Management"/>
+    <menuitem id="line_management_menu" name="Lines" parent="line_management_menu_root" action="view_line_management_action"/>
+    <menuitem id="line_map_menu" name="Line Map" parent="line_management_menu_root" action="action_line_map" sequence="10"/>
+</odoo>

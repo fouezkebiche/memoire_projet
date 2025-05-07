@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="infrastructure_management.StationMapTemplate">
+        <div class="o_station_map_container" style="height: 100%; width: 100%;">
+            <div t-ref="map" id="map" style="height: 600px; width: 100%;"></div>
+        </div>
+    </t>
+</templates>
