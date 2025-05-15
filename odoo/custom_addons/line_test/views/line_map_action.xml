@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<odoo>
-    <record id="action_line_map" model="ir.actions.client">
-        <field name="name">Line Map</field>
-        <field name="tag">line_map_tag</field>
-    </record>
-</odoo>

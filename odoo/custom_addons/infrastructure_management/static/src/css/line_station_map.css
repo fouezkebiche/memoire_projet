@@ -1,9 +1,9 @@
-.o_station_map_container {
+.o_line_station_map_container {
     height: 100%;
     width: 100%;
 }
 
 #map {
-    height: 600px;
+    height: 100%;
     width: 100%;
 }

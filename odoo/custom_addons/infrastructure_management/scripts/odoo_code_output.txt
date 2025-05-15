@@ -6,6 +6,71 @@
 
 
 
+// [Folder] data
+
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\infrastructure_management\data\cron.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data noupdate="0">
+        <!-- Sync Stations Cron -->
+        <record id="cron_sync_stations" model="ir.cron">
+            <field name="name">Sync Infrastructure Stations</field>
+            <field name="model_id" ref="infrastructure_management.model_infrastructure_station"/>
+            <field name="state">code</field>
+            <field name="code">model.sync_stations_from_api()</field>
+            <field name="interval_number">5</field>
+            <field name="interval_type">minutes</field>
+            <field name="numbercall">-1</field>
+            <field name="active" eval="True"/>
+            <field name="doall">True</field>
+            <field name="priority">10</field>
+        </record>
+
+        <!-- Sync Lines Cron -->
+        <record id="cron_sync_lines" model="ir.cron">
+            <field name="name">Sync Infrastructure Lines</field>
+            <field name="model_id" ref="infrastructure_management.model_infrastructure_line"/>
+            <field name="state">code</field>
+            <field name="code">model.sync_lines_from_api()</field>
+            <field name="interval_number">5</field>
+            <field name="interval_type">minutes</field>
+            <field name="numbercall">-1</field>
+            <field name="active" eval="True"/>
+            <field name="doall">True</field>
+            <field name="priority">20</field>
+        </record>
+
+        <!-- Sync Line Stations Cron -->
+        <record id="cron_sync_line_stations" model="ir.cron">
+            <field name="name">Sync Infrastructure Line Stations</field>
+            <field name="model_id" ref="infrastructure_management.model_infrastructure_line_station"/>
+            <field name="state">code</field>
+            <field name="code">model.sync_linestations_from_api()</field>
+            <field name="interval_number">5</field>
+            <field name="interval_type">minutes</field>
+            <field name="numbercall">-1</field>
+            <field name="active" eval="True"/>
+            <field name="doall">True</field>
+            <field name="priority">30</field>
+        </record>
+    </data>
+</odoo>
+
+
+
+
+
+
+
+
+
 // [Folder] models
 
 
@@ -22,21 +87,25 @@ import logging
 import re
 from odoo import models, fields, api
 from odoo.exceptions import UserError, ValidationError
+from datetime import datetime
+from odoo.tools import DEFAULT_SERVER_DATETIME_FORMAT
 
 _logger = logging.getLogger(__name__)
 
 class InfrastructureLine(models.Model):
     _name = 'infrastructure.line'
     _description = 'Infrastructure Line'
+    _rec_name = 'enterprise_code'
 
     code = fields.Char(string='Code', required=True)
-    color = fields.Char(string='Color', required=True)
-    line_type_id = fields.Many2one(
-        'infrastructure.line.type',
+    color = fields.Integer(string='Color', required=True, default=1)  # Changed to Integer
+    enterprise_code = fields.Char(string='Enterprise Code', required=True)
+    line_type = fields.Selection(
+        [('1', 'Bus'), ('2', 'Metro'), ('3', 'Tram')],
         string='Line Type',
+        default='1',
         required=True
     )
-    enterprise_code = fields.Char(string='Enterprise Code', required=True)
     departure_station_id = fields.Many2one(
         'infrastructure.station',
         string='Departure Station',
@@ -50,39 +119,35 @@ class InfrastructureLine(models.Model):
     schedule = fields.Text(string='Schedule')
     external_id = fields.Integer(string='External API ID', readonly=True)
 
-    # Map color indices to hex codes
     COLOR_INDEX_TO_HEX = {
-        '1': '#FF0000',  # Red
-        '2': '#00FF00',  # Green
-        '3': '#0000FF',  # Blue
-        '4': '#FFFF00',  # Yellow
-        '5': '#FF00FF',  # Magenta
-        '6': '#00FFFF',  # Cyan
-        '7': '#800080',  # Purple
-        '8': '#FFA500',  # Orange
-        '9': '#A52A2A',  # Brown
-        '10': '#FFFFFF', # White
+        1: '#FF0000',  # Red
+        2: '#00FF00',  # Green
+        3: '#0000FF',  # Blue
+        4: '#FFFF00',  # Yellow
+        5: '#FF00FF',  # Magenta
+        6: '#00FFFF',  # Cyan
+        7: '#800080',  # Purple
+        8: '#FFA500',  # Orange
+        9: '#A52A2A',  # Brown
+        10: '#FFFFFF', # White
     }
+    HEX_TO_COLOR_INDEX = {v.upper(): k for k, v in COLOR_INDEX_TO_HEX.items()}
+
+    def name_get(self):
+        result = []
+        for line in self:
+            name = line.enterprise_code or line.code or f'Line {line.id}'
+            _logger.debug("name_get for line ID %s: %s", line.id, name)
+            result.append((line.id, name))
+        return result
 
     @api.constrains('color')
     def _check_color(self):
-        """Validate or convert color to a valid hex code."""
         for record in self:
-            if not record.color:
-                continue
-            # Check if color is a valid hex code
-            if re.match(r'^#(?:[0-9a-fA-F]{3}){1,2}$', record.color):
-                continue
-            # Check if color is an index and convert to hex
-            if record.color in self.COLOR_INDEX_TO_HEX:
-                record.color = self.COLOR_INDEX_TO_HEX[record.color]
-            else:
-                raise ValidationError(
-                    "Color must be a valid hex code (e.g., #FF0000) or a valid color index (1-10)."
-                )
+            if record.color not in self.COLOR_INDEX_TO_HEX:
+                raise ValidationError("Color index must be between 1 and 10.")
 
     def _prepare_station_data(self, station):
-        """Prepare Station data for API payload."""
         return {
             'id': station.external_id or station.id,
             'nameAr': station.name_ar or '',
@@ -92,34 +157,37 @@ class InfrastructureLine(models.Model):
             'lng': station.longitude or 0.0,
             'paths': json.loads(station.paths) if station.paths else [],
             'lines': [line.external_id or line.id for line in station.line_ids],
-            'schedule': json.loads(station.schedule) if station.schedule else []
+            'schedule': json.loads(station.schedule) if station.schedule else [],
+            'changes': None  # Align with API response
         }
 
     @api.model
     def create(self, vals):
-        # Validate schedule if provided
         if vals.get('schedule'):
             try:
                 json.loads(vals['schedule'])
             except json.JSONDecodeError:
                 raise UserError("Schedule must be valid JSON (e.g., '[\"08:00\", \"09:00\"]').")
 
-        # Convert color index to hex if necessary
-        if vals.get('color') in self.COLOR_INDEX_TO_HEX:
-            vals['color'] = self.COLOR_INDEX_TO_HEX[vals['color']]
+        # Convert color input to integer
+        if 'color' in vals and isinstance(vals['color'], str):
+            if vals['color'].startswith('#') and vals['color'].upper() in self.HEX_TO_COLOR_INDEX:
+                vals['color'] = self.HEX_TO_COLOR_INDEX[vals['color'].upper()]
+            elif vals['color'].isdigit() and int(vals['color']) in self.COLOR_INDEX_TO_HEX:
+                vals['color'] = int(vals['color'])
+            else:
+                raise UserError("Color must be a valid hex code (e.g., #FF0000) or index (1-10).")
 
-        # Create the record in Odoo
-        record = super(InfrastructureLine, self).create(vals)
+        with self.env.cr.savepoint():
+            record = super(InfrastructureLine, self).create(vals)
 
-        # Prepare Station data
         departure_station = self.env['infrastructure.station'].browse(record.departure_station_id.id)
         terminus_station = self.env['infrastructure.station'].browse(record.terminus_station_id.id)
 
-        # Prepare data for API
         api_data = {
             'code': record.code,
-            'color': record.color,
-            'lineType': record.line_type_id.id,
+            'color': self.COLOR_INDEX_TO_HEX[record.color],  # Convert to hex
+            'lineType': int(record.line_type),
             'enterpriseCode': record.enterprise_code,
             'departureStation': self._prepare_station_data(departure_station),
             'terminusStation': self._prepare_station_data(terminus_station),
@@ -152,68 +220,73 @@ class InfrastructureLine(models.Model):
             'schedule': json.loads(record.schedule) if record.schedule else []
         }
 
-        # Send POST request to API
         try:
-            api_url = 'http://147.93.52.105:8082/infra/line'
-            _logger.info("Sending POST request to: %s with payload: %s", api_url, json.dumps(api_data))
+            api_url = 'http://147.93.52.105:9000/infra/line'
+            payload = json.dumps(api_data, ensure_ascii=False).encode('utf-8')
+            _logger.info("Sending POST request to: %s with payload: %s", api_url, payload.decode('utf-8'))
             response = requests.post(
                 api_url,
-                headers={'Content-Type': 'application/json'},
-                data=json.dumps(api_data)
+                headers={'Content-Type': 'application/json; charset=utf-8'},
+                data=payload,
+                timeout=10
             )
             _logger.info("API POST %s response: %s (Status: %s)", api_url, response.text, response.status_code)
             if response.status_code == 201:
-                # Try to extract ID from response if API returns it
                 try:
-                    response_data = response.text  # API returns string like "Line created with id: 9"
-                    if "Line created with id:" in response_data:
-                        external_id = int(response_data.split("Line created with id: ")[1])
-                        record.write({'external_id': external_id})
-                except (ValueError, IndexError):
-                    pass  # Unable to parse ID
+                    response_data = response.json()
+                    external_id = response_data.get('id')
+                    if not external_id:
+                        raise ValueError("No external_id found in JSON response")
+                except json.JSONDecodeError:
+                    response_text = response.text.strip()
+                    if "Line created with id:" in response_text:
+                        try:
+                            external_id = int(response_text.split("Line created with id:")[1].strip())
+                        except (IndexError, ValueError):
+                            _logger.error("Unable to parse external_id from text response: %s", response_text)
+                            raise UserError(f"Failed to parse external_id from API response: {response_text}")
+                    else:
+                        _logger.error("Unexpected response format: %s", response_text)
+                        raise UserError(f"Unexpected API response format: {response_text}")
+
+                self._cr.execute('UPDATE infrastructure_line SET external_id = %s WHERE id = %s', (external_id, record.id))
+                _logger.info("Assigned external_id %s to line %s", external_id, record.enterprise_code or record.code)
             else:
-                raise UserError(f"Failed to create line in API: {response.text}")
-        except requests.RequestException as e:
-            _logger.error("API POST request failed: %s", str(e))
-            raise UserError(f"API request failed: {str(e)}")
+                _logger.warning("Failed to create line in API: %s (Status: %s). Line created in Odoo.", response.text, response.status_code)
+        except (requests.RequestException, UserError) as e:
+            _logger.error("API POST request failed: %s. Line created in Odoo without external_id.", str(e))
 
         return record
 
     def write(self, vals):
-        """Override write to sync updates with the API."""
-        # Convert color index to hex if necessary
-        if vals.get('color') in self.COLOR_INDEX_TO_HEX:
-            vals['color'] = self.COLOR_INDEX_TO_HEX[vals['color']]
+        if 'color' in vals and isinstance(vals['color'], str):
+            if vals['color'].startswith('#') and vals['color'].upper() in self.HEX_TO_COLOR_INDEX:
+                vals['color'] = self.HEX_TO_COLOR_INDEX[vals['color'].upper()]
+            elif vals['color'].isdigit() and int(vals['color']) in self.COLOR_INDEX_TO_HEX:
+                vals['color'] = int(vals['color'])
+            else:
+                raise UserError("Color must be a valid hex code (e.g., #FF0000) or index (1-10).")
 
-        # Validate schedule if provided
         if vals.get('schedule'):
             try:
                 json.loads(vals['schedule'])
             except json.JSONDecodeError:
                 raise UserError("Schedule must be valid JSON (e.g., '[\"08:00\", \"09:00\"]').")
 
-        # Update the record in Odoo
         result = super(InfrastructureLine, self).write(vals)
 
-        # Sync updates to API for each record
         for record in self:
             if not record.external_id:
-                _logger.warning("Skipping API update for line %s: No external_id.", record.code)
+                _logger.warning("Skipping API update for line %s: No external_id.", record.enterprise_code or record.code)
                 continue
 
-            # Prepare Station data
-            departure_station = self.env['infrastructure.station'].browse(
-                record.departure_station_id.id
-            )
-            terminus_station = self.env['infrastructure.station'].browse(
-                record.terminus_station_id.id
-            )
+            departure_station = self.env['infrastructure.station'].browse(record.departure_station_id.id)
+            terminus_station = self.env['infrastructure.station'].browse(record.terminus_station_id.id)
 
-            # Prepare data for API
             api_data = {
                 'code': record.code,
-                'color': record.color,
-                'lineType': record.line_type_id.id,
+                'color': self.COLOR_INDEX_TO_HEX[record.color],
+                'lineType': int(record.line_type),
                 'enterpriseCode': record.enterprise_code,
                 'departureStation': self._prepare_station_data(departure_station),
                 'terminusStation': self._prepare_station_data(terminus_station),
@@ -246,17 +319,17 @@ class InfrastructureLine(models.Model):
                 'schedule': json.loads(record.schedule) if record.schedule else []
             }
 
-            # Send PUT request to API
             try:
-                api_url = f'http://147.93.52.105:8082/infra/line/{record.external_id}'
-                _logger.info("Sending PUT request to: %s with payload: %s", api_url, json.dumps(api_data))
+                api_url = f'http://147.93.52.105:9000/infra/line/{record.external_id}'
+                payload = json.dumps(api_data, ensure_ascii=False).encode('utf-8')
+                _logger.info("Sending PUT request to: %s with payload: %s", api_url, payload.decode('utf-8'))
                 response = requests.put(
                     api_url,
-                    headers={'Content-Type': 'application/json'},
-                    data=json.dumps(api_data)
+                    headers={'Content-Type': 'application/json; charset=utf-8'},
+                    data=payload,
+                    timeout=10
                 )
                 _logger.info("API PUT %s response: %s (Status: %s)", api_url, response.text, response.status_code)
-                # Accept 200, 201, or 204 as success
                 if response.status_code not in (200, 201, 204):
                     raise UserError(f"Failed to update line in API: {response.text} (Status: {response.status_code})")
             except requests.RequestException as e:
@@ -266,153 +339,212 @@ class InfrastructureLine(models.Model):
         return result
 
     def unlink(self):
-        """Override unlink to sync deletion with the API."""
         for record in self:
             if record.external_id:
                 try:
-                    api_url = f'http://147.93.52.105:8082/infra/line/{record.external_id}'
+                    api_url = f'http://147.93.52.105:9000/infra/line/{record.external_id}'
                     _logger.info("Sending DELETE request to: %s", api_url)
                     response = requests.delete(
                         api_url,
-                        headers={'Content-Type': 'application/json'}
+                        headers={'Content-Type': 'application/json'},
+                        timeout=10
                     )
                     _logger.info("API DELETE %s response: %s (Status: %s)", api_url, response.text, response.status_code)
-                    # Accept 200 or 204 as success
                     if response.status_code not in (200, 204):
                         _logger.warning(
                             "Failed to delete line %s in API: %s (Status: %s). Proceeding with Odoo deletion.",
-                            record.code, response.text, response.status_code
+                            record.enterprise_code or record.code, response.text, response.status_code
                         )
                 except requests.RequestException as e:
-                    _logger.error("API DELETE request failed for line %s: %s. Proceeding with Odoo deletion.", record.code, str(e))
+                    _logger.error("API DELETE request failed for line %s: %s.", 
+                                 record.enterprise_code or record.code, str(e))
             else:
-                _logger.info("Skipping API delete for line %s: No external_id.", record.code)
+                _logger.info("Skipping API delete for line %s: No external_id.", record.enterprise_code or record.code)
 
-        # Proceed with Odoo deletion
         return super(InfrastructureLine, self).unlink()
 
     @api.model
     def sync_lines_from_api(self):
-        """Fetch lines from API and sync them into Odoo."""
-        # Sync stations first to ensure all stations are available
         try:
             self.env['infrastructure.station'].sync_stations_from_api()
         except Exception as e:
             _logger.error("Failed to sync stations: %s", str(e))
+            self.env['mail.activity'].create({
+                'res_model': 'ir.cron',
+                'res_id': self.env.ref('infrastructure_management.cron_sync_lines').id,
+                'activity_type_id': self.env.ref('mail.mail_activity_data_warning').id,
+                'summary': 'Line Sync Failure',
+                'note': f'Failed to sync stations: {str(e)}',
+                'user_id': self.env.ref('base.user_admin').id,
+            })
             raise UserError(f"Failed to sync stations: {str(e)}")
 
+        api_url = 'http://147.93.52.105:9000/infra/line'
+        last_sync = self.env['ir.config_parameter'].sudo().get_param('infrastructure.line.last_sync')
+        params = {}
+        if last_sync:
+            params['last_updated'] = last_sync
+            _logger.info("Incremental sync for lines since %s", last_sync)
+
+        _logger.info("Sending GET request to: %s with params: %s", api_url, params)
+
         try:
-            api_url = 'http://147.93.52.105:8082/infra/line'
-            _logger.info("Sending GET request to: %s", api_url)
             response = requests.get(
                 api_url,
-                headers={'Content-Type': 'application/json'}
+                headers={'Content-Type': 'application/json'},
+                params=params,
+                timeout=30
             )
             _logger.info("API GET %s response: %s (Status: %s)", api_url, response.text, response.status_code)
             if response.status_code == 200:
                 lines = response.json()
+                current_time = datetime.now().strftime(DEFAULT_SERVER_DATETIME_FORMAT)
+                self.env['ir.config_parameter'].sudo().set_param('infrastructure.line.last_sync', current_time)
+
+                synced_count = 0
+                skipped_count = 0
                 for line in lines:
                     try:
-                        # Validate required fields
-                        if not line.get('code') or not line.get('enterpriseCode'):
+                        external_id = line.get('id')
+                        if not external_id:
+                            _logger.warning("Skipping line with missing id: %s", line)
+                            skipped_count += 1
+                            continue
+
+                        code = line.get('code', '')
+                        enterprise_code = line.get('enterpriseCode', '')
+                        if (
+                            code.lower().startswith('test') or
+                            enterprise_code.lower().startswith('test') or
+                            not line.get('departureStation') or
+                            not line.get('terminusStation')
+                        ):
+                            _logger.info(f"Skipping test line with external_id {external_id}")
+                            skipped_count += 1
+                            continue
+
+                        if not code or not enterprise_code:
                             _logger.warning("Skipping line with missing code or enterpriseCode: %s", line)
+                            skipped_count += 1
                             continue
 
-                        # Find or create line_type
-                        line_type_id = line.get('lineType')
-                        if not line_type_id:
-                            _logger.warning("Skipping line with missing lineType: %s", line.get('code', 'Unknown'))
-                            continue
-                        line_type = self.env['infrastructure.line.type'].search(
-                            [('id', '=', line_type_id)], limit=1
-                        )
-                        if not line_type:
-                            line_type = self.env['infrastructure.line.type'].create({
-                                'name': f"Type {line_type_id}",
-                                'code': str(line_type_id)
-                            })
-
-                        # Find stations by external_id
                         departure_station_id = line.get('departureStation', {}).get('id')
                         if not departure_station_id:
-                            _logger.warning("Skipping line with missing departureStation: %s", line.get('code'))
+                            _logger.warning("Skipping line with missing departureStation id: %s", code)
+                            skipped_count += 1
                             continue
                         departure_station = self.env['infrastructure.station'].search(
                             [('external_id', '=', departure_station_id)], limit=1
                         )
                         if not departure_station:
-                            departure_station = self.env['infrastructure.station'].create({
-                                'name_ar': line['departureStation'].get('nameAr', 'Unknown'),
-                                'name_en': line['departureStation'].get('nameEn', 'Unknown'),
-                                'name_fr': line['departureStation'].get('nameFr', 'Unknown'),
-                                'latitude': line['departureStation'].get('lat', 0.0),
-                                'longitude': line['departureStation'].get('lng', 0.0),
-                                'external_id': departure_station_id,
-                                'paths': json.dumps(line['departureStation'].get('paths', [])),
-                                'schedule': json.dumps(line['departureStation'].get('schedule', [])),
-                            })
+                            with self.env.cr.savepoint():
+                                departure_station = self.env['infrastructure.station'].create({
+                                    'name_ar': line['departureStation'].get('nameAr', 'Unknown'),
+                                    'name_en': line['departureStation'].get('nameEn', 'Unknown'),
+                                    'name_fr': line['departureStation'].get('nameFr', 'Unknown'),
+                                    'latitude': line['departureStation'].get('lat', 0.0),
+                                    'longitude': line['departureStation'].get('lng', 0.0),
+                                    'external_id': departure_station_id,
+                                    'paths': json.dumps(line['departureStation'].get('paths', [])),
+                                    'schedule': json.dumps(line['departureStation'].get('schedule', [])),
+                                    'changes': json.dumps({})  # Align with API
+                                })
 
                         terminus_station_id = line.get('terminusStation', {}).get('id')
                         if not terminus_station_id:
-                            _logger.warning("Skipping line with missing terminusStation: %s", line.get('code'))
+                            _logger.warning("Skipping line with missing terminusStation id: %s", code)
+                            skipped_count += 1
                             continue
                         terminus_station = self.env['infrastructure.station'].search(
                             [('external_id', '=', terminus_station_id)], limit=1
                         )
                         if not terminus_station:
-                            terminus_station = self.env['infrastructure.station'].create({
-                                'name_ar': line['terminusStation'].get('nameAr', 'Unknown'),
-                                'name_en': line['terminusStation'].get('nameEn', 'Unknown'),
-                                'name_fr': line['terminusStation'].get('nameFr', 'Unknown'),
-                                'latitude': line['terminusStation'].get('lat', 0.0),
-                                'longitude': line['terminusStation'].get('lng', 0.0),
-                                'external_id': terminus_station_id,
-                                'paths': json.dumps(line['terminusStation'].get('paths', [])),
-                                'schedule': json.dumps(line['terminusStation'].get('schedule', [])),
-                            })
+                            with self.env.cr.savepoint():
+                                terminus_station = self.env['infrastructure.station'].create({
+                                    'name_ar': line['terminusStation'].get('nameAr', 'Unknown'),
+                                    'name_en': line['terminusStation'].get('nameEn', 'Unknown'),
+                                    'name_fr': line['terminusStation'].get('nameFr', 'Unknown'),
+                                    'latitude': line['terminusStation'].get('lat', 0.0),
+                                    'longitude': line['terminusStation'].get('lng', 0.0),
+                                    'external_id': terminus_station_id,
+                                    'paths': json.dumps(line['terminusStation'].get('paths', [])),
+                                    'schedule': json.dumps(line['terminusStation'].get('schedule', [])),
+                                    'changes': json.dumps({})  # Align with API
+                                })
 
-                        # Handle color: use hex or convert to hex
-                        color = line.get('color', '#000000')
-                        # If color is a number (index), convert to hex
-                        if color in self.COLOR_INDEX_TO_HEX:
-                            color = self.COLOR_INDEX_TO_HEX[color]
-                        # If not a valid hex, log and use default
-                        elif not re.match(r'^#(?:[0-9a-fA-F]{3}){1,2}$', color):
-                            _logger.warning("Invalid color format for line %s: %s. Using default #000000.", line.get('code'), color)
-                            color = '#000000'
+                        color = line.get('color', '#000000').upper()
+                        if color in self.HEX_TO_COLOR_INDEX:
+                            color_index = self.HEX_TO_COLOR_INDEX[color]
+                        elif color.isdigit() and int(color) in self.COLOR_INDEX_TO_HEX:
+                            color_index = int(color)
+                        else:
+                            _logger.warning("Invalid color format for line %s: %s. Using default 1.", code, color)
+                            color_index = 1
 
-                        # Prepare schedule
                         schedule = json.dumps(line.get('schedule', []))
                         try:
                             json.loads(schedule)
                         except json.JSONDecodeError:
-                            _logger.warning("Invalid schedule format for line %s: %s. Using empty schedule.", line.get('code'), schedule)
+                            _logger.warning("Invalid schedule format for line %s: %s. Using empty schedule.", code, schedule)
                             schedule = '[]'
 
-                        # Upsert line in Odoo
-                        existing_line = self.search([('external_id', '=', line.get('id'))], limit=1)
                         line_data = {
-                            'code': line.get('code'),
-                            'color': color,
-                            'line_type_id': line_type.id,
-                            'enterprise_code': line.get('enterpriseCode'),
+                            'code': code,
+                            'color': color_index,
+                            'line_type': str(line.get('lineType', 1)),
+                            'enterprise_code': enterprise_code,
                             'departure_station_id': departure_station.id,
                             'terminus_station_id': terminus_station.id,
                             'schedule': schedule,
-                            'external_id': line.get('id'),
+                            'external_id': external_id
                         }
-                        if existing_line:
-                            existing_line.write(line_data)
-                        else:
-                            self.create(line_data)
+
+                        with self.env.cr.savepoint():
+                            existing_line = self.search([('external_id', '=', external_id)], limit=1)
+                            if existing_line:
+                                existing_line.write(line_data)
+                                _logger.info("Updated line %s", external_id)
+                            else:
+                                self.create(line_data)
+                                _logger.info("Created line %s", external_id)
+                            synced_count += 1
+
                     except Exception as e:
-                        _logger.error("Failed to sync line %s: %s", line.get('code', 'Unknown'), str(e))
+                        _logger.error("Failed to sync line %s: %s", line.get('id', 'Unknown'), str(e))
+                        skipped_count += 1
                         continue
+
+                if skipped_count > 5:
+                    self.env['mail.activity'].create({
+                        'res_model': 'ir.cron',
+                        'res_id': self.env.ref('infrastructure_management.cron_sync_lines').id,
+                        'activity_type_id': self.env.ref('mail.mail_activity_data_warning').id,
+                        'summary': 'Excessive Lines Skipped',
+                        'note': f'Skipped {skipped_count} lines during sync. Check API data.',
+                        'user_id': self.env.ref('base.user_admin').id,
+                    })
+
+                message = f"Synced {synced_count} lines, skipped {skipped_count} lines."
+                _logger.info(message)
+                return {
+                    'synced': synced_count,
+                    'skipped': skipped_count,
+                    'message': message
+                }
+
             else:
                 raise UserError(f"Failed to fetch lines from API: {response.text} (Status: {response.status_code})")
         except requests.RequestException as e:
-            _logger.error("API GET request failed: %s", str(e))
-            raise UserError(f"API request failed: {str(e)}")
+            _logger.error("Line sync failed: %s", str(e))
+            self.env['mail.activity'].create({
+                'res_model': 'ir.cron',
+                'res_id': self.env.ref('infrastructure_management.cron_sync_lines').id,
+                'activity_type_id': self.env.ref('mail.mail_activity_data_warning').id,
+                'summary': 'Line Sync Failure',
+                'note': f'Sync failed: {str(e)}',
+                'user_id': self.env.ref('base.user_admin').id,
+            })
+            raise UserError(f"Line sync failed: {str(e)}")
 
 
 
@@ -426,6 +558,9 @@ import json
 import logging
 from odoo import models, fields, api
 from odoo.exceptions import UserError, ValidationError
+from datetime import datetime
+from odoo.tools import DEFAULT_SERVER_DATETIME_FORMAT
+from psycopg2 import OperationalError
 
 _logger = logging.getLogger(__name__)
 
@@ -460,394 +595,322 @@ class InfrastructureLineStation(models.Model):
 
     @api.constrains('lat', 'lng')
     def _check_coordinates(self):
-        """Validate latitude and longitude."""
         for record in self:
             if record.lat and (record.lat < -90 or record.lat > 90):
                 raise ValidationError("Latitude must be between -90 and 90 degrees.")
             if record.lng and (record.lng < -180 or record.lng > 180):
                 raise ValidationError("Longitude must be between -180 and 180 degrees.")
 
+    @api.constrains('order', 'line_id', 'direction')
+    def _check_unique_order(self):
+        for record in self:
+            duplicates = self.search([
+                ('line_id', '=', record.line_id.id),
+                ('direction', '=', record.direction),
+                ('order', '=', record.order),
+                ('id', '!=', record.id)
+            ])
+            if duplicates:
+                raise ValidationError(
+                    f"Order {record.order} is already used for line {record.line_id.enterprise_code} "
+                    f"in direction {record.direction}."
+                )
+
     def _prepare_station_data(self, station):
-        """Prepare Station data for API payload."""
         return {
             'id': station.external_id or station.id,
             'nameAr': station.name_ar or 'Unknown',
             'nameEn': station.name_en or 'Unknown',
             'nameFr': station.name_fr or 'Unknown',
-            'lat': station.latitude or 36.0,
-            'lng': station.longitude or 6.0,
+            'lat': station.latitude or 0.0,
+            'lng': station.longitude or 0.0,
             'paths': json.loads(station.paths) if station.paths else [],
-            'lines': [line.external_id or line.id for line in station.line_ids] or [station.external_id or station.id],
+            'lines': [line.external_id or line.id for line in station.line_ids],
             'schedule': json.loads(station.schedule) if station.schedule else [],
-            'changes': {}  # Required JsonObject
+            'changes': json.loads(station.changes) if station.changes else {}
         }
 
     def _prepare_line_data(self, line):
-        """Prepare LineData for API payload."""
         departure_station = line.departure_station_id
         terminus_station = line.terminus_station_id
         return {
             'id': line.external_id or line.id,
             'code': line.code or 'LINE',
             'color': line.color or '#000000',
-            'departureStation': departure_station.name_en or str(departure_station.id) if departure_station else 'Unknown',
+            'departureStation': departure_station.name_en or 'Unknown' if departure_station else 'Unknown',
             'departureAddress': departure_station.name_en or 'Unknown' if departure_station else 'Unknown',
-            'terminusStation': terminus_station.name_en or str(terminus_station.id) if terminus_station else 'Unknown',
+            'terminusStation': terminus_station.name_en or 'Unknown' if terminus_station else 'Unknown',
             'terminusAddress': terminus_station.name_en or 'Unknown' if terminus_station else 'Unknown',
             'schedule': json.loads(line.schedule) if line.schedule else ['08:00']
         }
 
-    @api.model
-    def create(self, vals):
-        """Create a line station in Odoo and sync with API."""
-        record = super(InfrastructureLineStation, self).create(vals)
+    def _sync_to_api(self, record):
+        """Helper method to sync a record to the API via POST if no external_id exists."""
+        if record.external_id:
+            return record.external_id
+
         station = self.env['infrastructure.station'].browse(record.station_id.id)
         line = self.env['infrastructure.line'].browse(record.line_id.id)
-
-        # Validate line and station
-        if not line.external_id:
-            raise UserError(f"Line {line.id} has no external_id. Please sync lines first.")
-        if not station.external_id:
-            raise UserError(f"Station {station.id} has no external_id. Please sync stations first.")
-
-        # Ensure station's lines include the current line
-        station_data = self._prepare_station_data(station)
-        if line.external_id not in station_data['lines']:
-            station_data['lines'].append(line.external_id)
+        if not line.external_id or not station.external_id:
+            raise UserError("Cannot sync to API: Line or station missing external_id.")
 
         api_data = {
             'order': record.order,
             'stopDuration': record.stop_duration,
-            'direction': record.direction,  # GOING or RETURNING
+            'direction': record.direction,
             'radius': record.radius,
-            'lat': record.lat or station.latitude or 36.0,
-            'lng': record.lng or station.longitude or 6.0,
+            'lat': record.lat or station.latitude or 0.0,
+            'lng': record.lng or station.longitude or 0.0,
             'line': self._prepare_line_data(line),
-            'station': station_data,
+            'station': self._prepare_station_data(station),
             'alertable': record.alertable,
             'efficient': record.efficient,
             'duration': record.duration
         }
 
         try:
-            api_url = 'http://147.93.52.105:8082/infra/linestation'
+            api_url = 'http://147.93.52.105:9000/infra/linestation'
             payload = json.dumps(api_data, ensure_ascii=False).encode('utf-8')
             _logger.info("Sending POST request to: %s with payload: %s", api_url, payload.decode('utf-8'))
             response = requests.post(
                 api_url,
                 headers={'Content-Type': 'application/json; charset=utf-8'},
-                data=payload
+                data=payload,
+                timeout=10
             )
             _logger.info("API POST %s response: %s (Status: %s)", api_url, response.text, response.status_code)
             if response.status_code == 201:
                 try:
-                    response_data = response.text
-                    if "Line Station created with id:" in response_data:
-                        external_id = int(response_data.split("Line Station created with id: ")[1].strip())
-                        record.write({'external_id': external_id})
-                        _logger.info("Line station %s created with external_id %s", record.id, external_id)
+                    response_data = response.json()
+                    external_id = response_data.get('id')
+                    if not external_id:
+                        raise ValueError("No external_id in JSON response")
+                except json.JSONDecodeError:
+                    response_text = response.text.strip()
+                    if "Line Station created with id:" in response_text:
+                        try:
+                            external_id = int(response_text.split("Line Station created with id:")[1].strip())
+                        except (IndexError, ValueError):
+                            raise UserError(f"Failed to parse external_id from response: {response_text}")
                     else:
-                        _logger.error("Expected 'Line Station created with id:' in API response, got: %s", response.text)
-                        raise UserError(f"Failed to parse external_id from API response: {response.text}")
-                except (ValueError, IndexError) as e:
-                    _logger.error("Failed to parse external_id from API response '%s': %s", response.text, str(e))
-                    raise UserError(f"Failed to parse external_id from API response: {str(e)}")
+                        raise UserError(f"Unexpected API response format: {response_text}")
+                
+                self._cr.execute('UPDATE infrastructure_line_station SET external_id = %s WHERE id = %s', (external_id, record.id))
+                _logger.info("Assigned external_id %s to line station %s", external_id, record.id)
+                return external_id
             else:
                 raise UserError(f"Failed to create line station in API: {response.text} (Status: {response.status_code})")
         except requests.RequestException as e:
             _logger.error("API POST request failed: %s", str(e))
             raise UserError(f"API request failed: {str(e)}")
 
+    @api.model
+    def create(self, vals):
+        # Check for duplicates
+        line_id = vals.get('line_id')
+        direction = vals.get('direction')
+        order = vals.get('order')
+        if line_id and direction and order:
+            existing = self.search([
+                ('line_id', '=', line_id),
+                ('direction', '=', direction),
+                ('order', '=', order)
+            ])
+            if existing:
+                raise UserError(
+                    f"Order {order} is already used for line {existing.line_id.enterprise_code} "
+                    f"in direction {direction}."
+                )
+
+        record = super(InfrastructureLineStation, self).create(vals)
+        try:
+            record._sync_to_api(record)
+        except Exception as e:
+            _logger.error("Failed to sync line station %s to API: %s", record.id, str(e))
+            raise UserError(f"Failed to sync line station to API: {str(e)}")
+
         return record
 
     def write(self, vals):
-        """Update a line station in Odoo and sync with API."""
         result = super(InfrastructureLineStation, self).write(vals)
         for record in self:
+            if not record.external_id:
+                try:
+                    record._sync_to_api(record)
+                except Exception as e:
+                    _logger.error("Failed to sync line station %s to API: %s", record.id, str(e))
+                    continue
+
             station = self.env['infrastructure.station'].browse(record.station_id.id)
             line = self.env['infrastructure.line'].browse(record.line_id.id)
-
-            # Validate line and station
-            if not line.external_id:
-                raise UserError(f"Line {line.id} has no external_id. Please sync lines first.")
-            if not station.external_id:
-                raise UserError(f"Station {station.id} has no external_id. Please sync stations first.")
-
-            # Ensure station's lines include the current line
-            station_data = self._prepare_station_data(station)
-            if line.external_id not in station_data['lines']:
-                station_data['lines'].append(line.external_id)
-
             api_data = {
                 'order': record.order,
                 'stopDuration': record.stop_duration,
-                'direction': record.direction,  # GOING or RETURNING
+                'direction': record.direction,
                 'radius': record.radius,
-                'lat': record.lat or station.latitude or 36.0,
-                'lng': record.lng or station.longitude or 6.0,
+                'lat': record.lat or station.latitude or 0.0,
+                'lng': record.lng or station.longitude or 0.0,
                 'line': self._prepare_line_data(line),
-                'station': station_data,
+                'station': self._prepare_station_data(station),
                 'alertable': record.alertable,
                 'efficient': record.efficient,
                 'duration': record.duration
             }
 
-            # If no external_id, attempt to create in API first
-            if not record.external_id:
-                _logger.warning("Line station %s has no external_id. Attempting to create in API.", record.id)
-                try:
-                    api_url = 'http://147.93.52.105:8082/infra/linestation'
-                    payload = json.dumps(api_data, ensure_ascii=False).encode('utf-8')
-                    _logger.info("Sending POST request to: %s with payload: %s", api_url, payload.decode('utf-8'))
-                    response = requests.post(
-                        api_url,
-                        headers={'Content-Type': 'application/json; charset=utf-8'},
-                        data=payload
-                    )
-                    _logger.info("API POST %s response: %s (Status: %s)", api_url, response.text, response.status_code)
-                    if response.status_code == 201:
-                        try:
-                            response_data = response.text
-                            if "Line Station created with id:" in response_data:
-                                external_id = int(response_data.split("Line Station created with id: ")[1].strip())
-                                record.write({'external_id': external_id})
-                                _logger.info("Line station %s created in API with external_id %s", record.id, external_id)
-                            else:
-                                _logger.error("Expected 'Line Station created with id:' in API response, got: %s", response.text)
-                                raise UserError(f"Failed to parse external_id from API response: {response.text}")
-                        except (ValueError, IndexError) as e:
-                            _logger.error("Failed to parse external_id from API POST response '%s': %s", response.text, str(e))
-                            raise UserError(f"Failed to parse external_id: {str(e)}")
-                    else:
-                        _logger.error("Failed to create line station in API: %s (Status: %s)", response.text, response.status_code)
-                        raise UserError(f"Failed to create line station in API: {response.text} (Status: {response.status_code})")
-                except requests.RequestException as e:
-                    _logger.error("API POST request failed for line station %s: %s", record.id, str(e))
-                    raise UserError(f"API POST request failed: {str(e)}")
-
-            # Proceed with update
             try:
-                api_url = f'http://147.93.52.105:8082/infra/linestation/{record.external_id}'
+                api_url = f'http://147.93.52.105:9000/infra/linestation/{record.external_id}'
                 payload = json.dumps(api_data, ensure_ascii=False).encode('utf-8')
                 _logger.info("Sending PUT request to: %s with payload: %s", api_url, payload.decode('utf-8'))
                 response = requests.put(
                     api_url,
                     headers={'Content-Type': 'application/json; charset=utf-8'},
-                    data=payload
+                    data=payload,
+                    timeout=10
                 )
                 _logger.info("API PUT %s response: %s (Status: %s)", api_url, response.text, response.status_code)
-                if response.status_code == 201:
+                # Accept 200, 201, 204 as success, or check response text
+                if response.status_code in (200, 201, 204) or "updated successfully" in response.text.lower():
                     _logger.info("Line station %s updated successfully in API", record.external_id)
-                elif response.status_code in (200, 204):
-                    _logger.info("Line station %s updated with status %s", record.external_id, response.status_code)
                 else:
+                    _logger.error("API PUT failed: %s (Status: %s)", response.text, response.status_code)
                     raise UserError(f"Failed to update line station in API: {response.text} (Status: {response.status_code})")
             except requests.RequestException as e:
-                _logger.error("API PUT request failed for line station %s: %s", record.id, str(e))
-                raise UserError(f"API PUT request failed: {str(e)}")
+                _logger.error("API PUT request failed: %s", str(e))
+                raise UserError(f"API request failed: {str(e)}")
 
         return result
 
     def unlink(self):
-        """Delete a line station in Odoo and sync with API."""
         for record in self:
             if record.external_id:
                 try:
-                    # Verify the record exists in the API
-                    api_url = f'http://147.93.52.105:8082/infra/linestation/{record.external_id}'
-                    _logger.info("Sending GET request to verify: %s", api_url)
-                    get_response = requests.get(
+                    api_url = f'http://147.93.52.105:9000/infra/linestation/{record.external_id}'
+                    _logger.info("Sending DELETE request to: %s", api_url)
+                    response = requests.delete(
                         api_url,
-                        headers={'Content-Type': 'application/json'}
+                        headers={'Content-Type': 'application/json'},
+                        timeout=10
                     )
-                    _logger.info("API GET %s response: %s (Status: %s)", api_url, get_response.text, get_response.status_code)
-                    if get_response.status_code == 200:
-                        # Record exists, attempt DELETE with retry
-                        for attempt in range(2):  # Try twice (initial + one retry)
-                            _logger.info("Sending DELETE request to: %s (Attempt %s)", api_url, attempt + 1)
-                            delete_response = requests.delete(
-                                api_url,
-                                headers={'Content-Type': 'application/json'}
-                            )
-                            _logger.info("API DELETE %s response: %s (Status: %s, Headers: %s)", 
-                                        api_url, delete_response.text, delete_response.status_code, dict(delete_response.headers))
-                            if delete_response.status_code in (200, 204):
-                                if "Line Station deleted with id:" in delete_response.text:
-                                    deleted_id = delete_response.text.split("Line Station deleted with id: ")[1].strip()
-                                    _logger.info("Line station %s deleted successfully in API with id %s", record.id, deleted_id)
-                                else:
-                                    _logger.warning("Expected 'Line Station deleted with id:' in API response, got: %s", delete_response.text)
-                                break  # Success, exit retry loop
-                            elif delete_response.status_code == 404:
-                                if attempt == 0:
-                                    _logger.warning("DELETE failed with 404 for line station %s (external_id: %s). Retrying...", 
-                                                   record.id, record.external_id)
-                                    continue
-                                _logger.warning("Line station %s (external_id: %s) not found in API after GET confirmed existence. Proceeding with Odoo deletion.", 
-                                               record.id, record.external_id)
-                                break  # Proceed after final attempt
-                            else:
-                                _logger.error("Failed to delete line station %s in API: %s (Status: %s)", 
-                                             record.id, delete_response.text, delete_response.status_code)
-                                raise UserError(f"Failed to delete line station in API: {delete_response.text} (Status: {delete_response.status_code})")
-                    elif get_response.status_code == 404:
-                        _logger.info("Line station %s not found in API (external_id: %s). Proceeding with Odoo deletion.", 
-                                    record.id, record.external_id)
-                    else:
-                        _logger.error("Failed to verify line station %s in API: %s (Status: %s)", 
-                                     record.id, get_response.text, get_response.status_code)
-                        raise UserError(f"Failed to verify line station in API: {get_response.text} (Status: {get_response.status_code})")
+                    _logger.info("API DELETE %s response: %s (Status: %s)", api_url, response.text, response.status_code)
+                    if response.status_code not in (200, 204):
+                        _logger.warning("API DELETE failed: %s (Status: %s)", response.text, response.status_code)
                 except requests.RequestException as e:
-                    _logger.error("API request failed for line station %s: %s", record.id, str(e))
-                    raise UserError(f"API request failed: {str(e)}")
-            else:
-                _logger.info("Skipping API delete for line station %s: No external_id.", record.id)
+                    _logger.error("API DELETE request failed: %s", str(e))
+                    raise UserError(f"API DELETE request failed: {str(e)}")
 
         return super(InfrastructureLineStation, self).unlink()
 
     @api.model
-    def clean_duplicate_line_stations(self):
-        """Remove duplicate line stations based on external_id, keeping the latest record."""
-        _logger.info("Starting deduplication of line stations")
-        records = self.search([('external_id', '!=', False)], order='external_id, id desc')
-        if not records:
-            _logger.info("No line stations with external_id found for deduplication")
-            return
-
-        external_id_groups = {}
+    def clean_duplicates(self):
+        _logger.info("Cleaning duplicate line stations")
+        records = self.search([
+            ('line_id', '!=', False),
+            ('direction', '!=', False),
+            ('order', '!=', False)
+        ], order='line_id, direction, order, id')
+        seen_keys = set()
         for record in records:
-            if record.external_id not in external_id_groups:
-                external_id_groups[record.external_id] = []
-            external_id_groups[record.external_id].append(record)
-
-        for external_id, group in external_id_groups.items():
-            if len(group) > 1:
-                keep_record = group[0]
-                delete_records = group[1:]
-                _logger.info("Found %s duplicates for external_id %s. Keeping record id %s, deleting %s", 
-                             len(delete_records), external_id, keep_record.id, [r.id for r in delete_records])
-                for record in delete_records:
-                    try:
-                        record.unlink()
-                    except Exception as e:
-                        _logger.error("Failed to delete duplicate line station id %s: %s", record.id, str(e))
-
-        no_external_id = self.search([('external_id', '=', False)])
-        if no_external_id:
-            _logger.warning("Found %s line stations without external_id: %s", 
-                            len(no_external_id), [r.id for r in no_external_id])
+            key = (record.line_id.id, record.direction, record.order)
+            if key in seen_keys:
+                _logger.info("Deleting duplicate line station id %s (line %s, %s, order %s)",
+                             record.id, record.line_id.enterprise_code, record.direction, record.order)
+                record.unlink()
+            else:
+                seen_keys.add(key)
 
     @api.model
     def sync_linestations_from_api(self):
-        """Fetch all line stations (GOING and RETURNING) from API and sync into Odoo without duplicates."""
-        self.clean_duplicate_line_stations()
+        max_retries = 3
+        retry_count = 0
+        while retry_count < max_retries:
+            try:
+                with self.env.cr.savepoint():
+                    self.clean_duplicates()
+                    lines = self.env['infrastructure.line'].search([])
+                    if not lines:
+                        raise UserError("No lines found. Sync lines first.")
 
-        try:
-            self.env['infrastructure.station'].sync_stations_from_api()
-            self.env['infrastructure.line'].sync_lines_from_api()
-        except Exception as e:
-            _logger.error("Failed to sync stations or lines: %s", str(e))
-            raise UserError(f"Failed to sync stations or lines: {str(e)}")
+                    base_api_url = 'http://147.93.52.105:9000/infra/linestation'
+                    directions = ['GOING', 'RETURNING']
+                    created_count = 0
 
-        lines = self.env['infrastructure.line'].search([])
-        if not lines:
-            _logger.warning("No lines found in Odoo. Cannot fetch line stations.")
-            raise UserError("No lines found in Odoo. Please sync lines first.")
-
-        base_api_url = 'http://147.93.52.105:8082/infra/linestation'
-        directions = ['GOING', 'RETURNING']
-
-        for line in lines:
-            for direction in directions:
-                api_url = f"{base_api_url}?lineId={line.external_id}&direction={direction}"
-                _logger.info("Sending GET request to: %s", api_url)
-
-                try:
-                    response = requests.get(
-                        api_url,
-                        headers={'Content-Type': 'application/json'}
-                    )
-                    _logger.info("API GET %s response: %s (Status: %s)", api_url, response.text, response.status_code)
-                    if response.status_code == 200:
-                        line_stations = response.json()
-                        for ls in line_stations:
+                    for line in lines:
+                        for direction in directions:
+                            params = {'lineId': line.external_id, 'direction': direction}
                             try:
-                                if not ls.get('line') or not ls.get('station'):
-                                    _logger.warning("Skipping line station with missing line or station: %s", ls.get('id', 'Unknown'))
-                                    continue
-
-                                line_record = self.env['infrastructure.line'].search(
-                                    [('external_id', '=', ls['line'].get('id'))], limit=1
+                                response = requests.get(
+                                    base_api_url,
+                                    headers={'Content-Type': 'application/json'},
+                                    params=params,
+                                    timeout=30
                                 )
-                                if not line_record:
-                                    _logger.warning("Line with external_id %s not found for line station %s", ls['line'].get('id'), ls.get('id', 'Unknown'))
-                                    continue
+                                _logger.info("API GET %s response: %s (Status: %s)", base_api_url, response.text, response.status_code)
+                                if response.status_code == 200:
+                                    line_stations = response.json()
+                                    for ls in line_stations:
+                                        if not ls.get('line') or not ls.get('station'):
+                                            _logger.warning("Skipping line station with missing data: %s", ls.get('id', 'Unknown'))
+                                            continue
 
-                                station = self.env['infrastructure.station'].search(
-                                    [('external_id', '=', ls['station'].get('id'))], limit=1
-                                )
-                                if not station:
-                                    _logger.warning("Station with external_id %s not found for line station %s", ls['station'].get('id'), ls.get('id', 'Unknown'))
-                                    continue
+                                        line_record = self.env['infrastructure.line'].search(
+                                            [('external_id', '=', ls['line'].get('id'))], limit=1
+                                        )
+                                        station = self.env['infrastructure.station'].search(
+                                            [('external_id', '=', ls['station'].get('id'))], limit=1
+                                        )
+                                        if not line_record or not station:
+                                            _logger.warning("Line or station not found for line station %s", ls.get('id', 'Unknown'))
+                                            continue
 
-                                ls_direction = ls.get('direction')
+                                        # Check for existing record
+                                        existing = self.search([
+                                            ('line_id', '=', line_record.id),
+                                            ('direction', '=', ls.get('direction')),
+                                            ('order', '=', ls.get('order', 0))
+                                        ], limit=1)
+                                        if existing:
+                                            _logger.info("Skipping duplicate line station for line %s, %s, order %s",
+                                                         line_record.enterprise_code, ls.get('direction'), ls.get('order'))
+                                            continue
 
-                                ls_data = {
-                                    'order': ls.get('order', 0),
-                                    'stop_duration': ls.get('stopDuration', 0),
-                                    'direction': ls_direction,
-                                    'radius': ls.get('radius', 0),
-                                    'lat': ls.get('lat', 0.0),
-                                    'lng': ls.get('lng', 0.0),
-                                    'line_id': line_record.id,
-                                    'station_id': station.id,
-                                    'alertable': ls.get('alertable', False),
-                                    'efficient': ls.get('efficient', False),
-                                    'duration': ls.get('duration', 0),
-                                    'external_id': ls.get('id')
-                                }
+                                        ls_data = {
+                                            'order': ls.get('order', 0),
+                                            'stop_duration': ls.get('stopDuration', 0),
+                                            'direction': ls.get('direction'),
+                                            'radius': ls.get('radius', 0),
+                                            'lat': ls.get('lat', 0.0),
+                                            'lng': ls.get('lng', 0.0),
+                                            'line_id': line_record.id,
+                                            'station_id': station.id,
+                                            'alertable': ls.get('alertable', False),
+                                            'efficient': ls.get('efficient', False),
+                                            'duration': ls.get('duration', 0),
+                                            'external_id': ls.get('id')
+                                        }
 
-                                existing_ls = self.search([('external_id', '=', ls.get('id'))], limit=1)
-                                if existing_ls:
-                                    _logger.info("Updating existing line station with external_id %s", ls.get('id'))
-                                    existing_ls.write(ls_data)
+                                        self.create(ls_data)
+                                        created_count += 1
+                                        _logger.info("Created line station %s for line %s, %s",
+                                                     ls.get('id'), line_record.enterprise_code, ls.get('direction'))
                                 else:
-                                    _logger.info("Creating new line station with external_id %s", ls.get('id'))
-                                    self.create(ls_data)
-                            except Exception as e:
-                                _logger.error("Failed to sync line station %s: %s", ls.get('id', 'Unknown'), str(e))
+                                    _logger.warning("API GET failed: %s (Status: %s)", response.text, response.status_code)
+                            except requests.RequestException as e:
+                                _logger.error("API GET failed: %s", str(e))
                                 continue
-                    else:
-                        _logger.warning("Failed to fetch line stations for line %s, direction %s: %s (Status: %s)", 
-                                        line.external_id, direction, response.text, response.status_code)
-                        continue
-                except requests.RequestException as e:
-                    _logger.error("API GET request failed for %s: %s", api_url, str(e))
+
+                    _logger.info("Synced %s line stations", created_count)
+                    return {'created': created_count}
+            except OperationalError as e:
+                if 'could not serialize access' in str(e):
+                    retry_count += 1
+                    _logger.warning("Transaction conflict, retrying (%s/%s)", retry_count, max_retries)
+                    if retry_count >= max_retries:
+                        raise UserError("Failed to sync after retries: Transaction conflict.")
                     continue
-
-
-
-
-
-
-
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\infrastructure_management\models\line_type.py
-from odoo import models, fields
-
-class InfrastructureLineType(models.Model):
-    _name = 'infrastructure.line.type'
-    _description = 'Infrastructure Line Type'
-
-    name = fields.Char(string='Name', required=True)
-    code = fields.Char(string='Code', required=True)
-
-    def name_get(self):
-        """Display name in dropdowns, with code as fallback."""
-        result = []
-        for line_type in self:
-            name = line_type.name or line_type.code or 'Unnamed Type'
-            result.append((line_type.id, name))
-        return result
+                raise
+            except Exception as e:
+                _logger.error("Sync failed: %s", str(e))
+                raise UserError(f"Sync failed: {str(e)}")
 
 
 
@@ -861,12 +924,15 @@ import json
 import logging
 from odoo import models, fields, api
 from odoo.exceptions import UserError, ValidationError
+from datetime import datetime
+from odoo.tools import DEFAULT_SERVER_DATETIME_FORMAT
 
 _logger = logging.getLogger(__name__)
 
 class InfrastructureStation(models.Model):
     _name = 'infrastructure.station'
     _description = 'Infrastructure Station'
+    _rec_name = 'name_en'
 
     name_ar = fields.Char(string='Name (Arabic)', required=True)
     name_en = fields.Char(string='Name (English)', required=True)
@@ -885,7 +951,6 @@ class InfrastructureStation(models.Model):
 
     @api.constrains('paths', 'changes', 'schedule')
     def _check_json_fields(self):
-        """Validate that paths, changes, and schedule are valid JSON."""
         for record in self:
             for field in ['paths', 'changes', 'schedule']:
                 if record[field]:
@@ -895,17 +960,15 @@ class InfrastructureStation(models.Model):
                         raise ValidationError(f"{field.capitalize()} must be valid JSON (e.g., [], {{}}, or [\"08:00\"]).")
 
     def name_get(self):
-        """Display name in dropdowns, prioritizing English name."""
         result = []
         for station in self:
-            name = station.name_en or station.name_ar or station.name_fr or 'Unnamed Station'
+            name = station.name_en or station.name_ar or station.name_fr or f'Station {station.id}'
+            _logger.debug("name_get for station ID %s: %s", station.id, name)
             result.append((station.id, name))
         return result
 
     @api.model
     def create(self, vals):
-        """Create a station in Odoo and sync with API."""
-        # Validate JSON fields
         for field in ['paths', 'changes', 'schedule']:
             if vals.get(field):
                 try:
@@ -913,10 +976,8 @@ class InfrastructureStation(models.Model):
                 except json.JSONDecodeError:
                     raise UserError(f"{field.capitalize()} must be valid JSON (e.g., [], {{}}, or [\"08:00\"]).")
 
-        # Create the record in Odoo
         record = super(InfrastructureStation, self).create(vals)
 
-        # Prepare API data
         api_data = {
             'nameAr': record.name_ar,
             'nameEn': record.name_en,
@@ -925,32 +986,44 @@ class InfrastructureStation(models.Model):
             'lng': record.longitude or 0.0,
             'paths': json.loads(record.paths) if record.paths else [],
             'lines': [line.external_id or line.id for line in record.line_ids],
-            'changes': None,  # Set to null to match API GET response
+            'changes': json.loads(record.changes) if record.changes else {},
             'schedule': json.loads(record.schedule) if record.schedule else []
         }
 
-        # Send POST request to API
         try:
-            api_url = 'http://147.93.52.105:8082/infra/station'
+            api_url = 'http://147.93.52.105:9000/infra/station'
             payload = json.dumps(api_data, ensure_ascii=False).encode('utf-8')
             _logger.info("Sending POST request to: %s with payload: %s", api_url, payload.decode('utf-8'))
             response = requests.post(
                 api_url,
                 headers={'Content-Type': 'application/json; charset=utf-8'},
-                data=payload
+                data=payload,
+                timeout=10
             )
             _logger.info("API POST %s response: %s (Status: %s)", api_url, response.text, response.status_code)
             if response.status_code == 201:
                 try:
-                    response_data = response.text
-                    if "Created Station with id:" in response_data:
-                        external_id = int(response_data.split("Created Station with id: ")[1].strip())
-                        record.write({'external_id': external_id})
+                    # Try to parse as JSON first
+                    response_data = response.json()
+                    external_id = response_data.get('id')
+                    if not external_id:
+                        raise ValueError("No external_id found in JSON response")
+                except json.JSONDecodeError:
+                    # Fallback to parsing plain text (e.g., "Created Station with id: 30")
+                    response_text = response.text.strip()
+                    if "Created Station with id:" in response_text:
+                        try:
+                            external_id = int(response_text.split("Created Station with id:")[1].strip())
+                        except (IndexError, ValueError):
+                            _logger.error("Unable to parse external_id from text response: %s", response_text)
+                            raise UserError(f"Failed to parse external_id from API response: {response_text}")
                     else:
-                        _logger.warning("No external_id found in API response: %s", response.text)
-                except (ValueError, IndexError) as e:
-                    _logger.error("Unable to parse external_id from API response: %s", str(e))
-                    raise UserError(f"Failed to parse external_id: {str(e)}")
+                        _logger.error("Unexpected response format: %s", response_text)
+                        raise UserError(f"Unexpected API response format: {response_text}")
+                
+                # Set external_id using SQL to avoid recursive write
+                self._cr.execute('UPDATE infrastructure_station SET external_id = %s WHERE id = %s', (external_id, record.id))
+                _logger.info("Assigned external_id %s to station %s", external_id, record.name_en)
             else:
                 raise UserError(f"Failed to create station in API: {response.text} (Status: {response.status_code})")
         except requests.RequestException as e:
@@ -960,8 +1033,6 @@ class InfrastructureStation(models.Model):
         return record
 
     def write(self, vals):
-        """Update a station in Odoo and sync with API."""
-        # Validate JSON fields if provided
         for field in ['paths', 'changes', 'schedule']:
             if vals.get(field):
                 try:
@@ -969,16 +1040,13 @@ class InfrastructureStation(models.Model):
                 except json.JSONDecodeError:
                     raise UserError(f"{field.capitalize()} must be valid JSON (e.g., [], {{}}, or [\"08:00\"]).")
 
-        # Update the record in Odoo
         result = super(InfrastructureStation, self).write(vals)
 
-        # Sync updates to API for each record
         for record in self:
             if not record.external_id:
                 _logger.warning("Skipping API update for station %s: No external_id.", record.name_en or record.id)
                 continue
 
-            # Prepare API data
             api_data = {
                 'nameAr': record.name_ar,
                 'nameEn': record.name_en,
@@ -987,22 +1055,21 @@ class InfrastructureStation(models.Model):
                 'lng': record.longitude or 0.0,
                 'paths': json.loads(record.paths) if record.paths else [],
                 'lines': [line.external_id or line.id for line in record.line_ids],
-                'changes': None,  # Set to null to match API GET response
+                'changes': json.loads(record.changes) if record.changes else {},
                 'schedule': json.loads(record.schedule) if record.schedule else []
             }
 
-            # Send PUT request to API
             try:
-                api_url = f'http://147.93.52.105:8082/infra/station/{record.external_id}'
+                api_url = f'http://147.93.52.105:9000/infra/station/{record.external_id}'
                 payload = json.dumps(api_data, ensure_ascii=False).encode('utf-8')
                 _logger.info("Sending PUT request to: %s with payload: %s", api_url, payload.decode('utf-8'))
                 response = requests.put(
                     api_url,
                     headers={'Content-Type': 'application/json; charset=utf-8'},
-                    data=payload
+                    data=payload,
+                    timeout=10
                 )
                 _logger.info("API PUT %s response: %s (Status: %s)", api_url, response.text, response.status_code)
-                # Accept 200, 201, or 204 as success
                 if response.status_code not in (200, 201, 204):
                     raise UserError(f"Failed to update station in API: {response.text} (Status: {response.status_code})")
             except requests.RequestException as e:
@@ -1012,53 +1079,75 @@ class InfrastructureStation(models.Model):
         return result
 
     def unlink(self):
-        """Delete a station in Odoo and sync with API."""
         for record in self:
             if record.external_id:
                 try:
-                    api_url = f'http://147.93.52.105:8082/infra/station/{record.external_id}'
+                    api_url = f'http://147.93.52.105:9000/infra/station/{record.external_id}'
                     _logger.info("Sending DELETE request to: %s", api_url)
                     response = requests.delete(
                         api_url,
-                        headers={'Content-Type': 'application/json'}
+                        headers={'Content-Type': 'application/json'},
+                        timeout=10
                     )
                     _logger.info("API DELETE %s response: %s (Status: %s)", api_url, response.text, response.status_code)
-                    # Accept 200 or 204 as success
                     if response.status_code not in (200, 204):
                         _logger.warning(
                             "Failed to delete station %s in API: %s (Status: %s). Proceeding with Odoo deletion.",
                             record.name_en or record.id, response.text, response.status_code
                         )
                 except requests.RequestException as e:
-                    _logger.error("API DELETE request failed for station %s: %s. Proceeding with Odoo deletion.", record.name_en or record.id, str(e))
+                    _logger.error("API DELETE request failed for station %s: %s.", record.name_en or record.id, str(e))
             else:
                 _logger.info("Skipping API delete for station %s: No external_id.", record.name_en or record.id)
 
-        # Proceed with Odoo deletion
         return super(InfrastructureStation, self).unlink()
 
     @api.model
     def sync_stations_from_api(self):
-        """Fetch stations from API and sync them into Odoo."""
-        api_url = 'http://147.93.52.105:8082/infra/station'
-        _logger.info("Sending GET request to: %s", api_url)
+        api_url = 'http://147.93.52.105:9000/infra/station'
+        last_sync = self.env['ir.config_parameter'].sudo().get_param('infrastructure.station.last_sync')
+        params = {}
+        if last_sync:
+            params['last_updated'] = last_sync
+            _logger.info("Incremental sync for stations since %s", last_sync)
+
+        _logger.info("Sending GET request to: %s with params: %s", api_url, params)
 
         try:
             response = requests.get(
                 api_url,
-                headers={'Content-Type': 'application/json'}
+                headers={'Content-Type': 'application/json'},
+                params=params,
+                timeout=30
             )
             _logger.info("API GET %s response: %s (Status: %s)", api_url, response.text, response.status_code)
             if response.status_code == 200:
                 stations = response.json()
+                current_time = datetime.now().strftime(DEFAULT_SERVER_DATETIME_FORMAT)
+                self.env['ir.config_parameter'].sudo().set_param('infrastructure.station.last_sync', current_time)
+
+                synced_count = 0
+                skipped_count = 0
+                api_station_ids = set()  # Track IDs from API response
+
                 for station in stations:
                     try:
-                        # Validate required fields
-                        if not station.get('nameAr') or not station.get('nameEn') or not station.get('nameFr'):
-                            _logger.warning("Skipping station with missing required name fields: %s", station)
+                        external_id = station.get('id')
+                        if not external_id:
+                            _logger.warning("Skipping station with missing id: %s", station)
+                            skipped_count += 1
                             continue
 
-                        # Find lines by external_id
+                        api_station_ids.add(external_id)  # Add to set of valid IDs
+
+                        name_ar = station.get('nameAr', '')
+                        name_en = station.get('nameEn', '')
+                        name_fr = station.get('nameFr', '')
+                        if not name_ar or not name_en or not name_fr:
+                            _logger.warning("Skipping station with missing required name fields: %s", station)
+                            skipped_count += 1
+                            continue
+
                         line_ids = []
                         for line_id in station.get('lines', []):
                             line = self.env['infrastructure.line'].search(
@@ -1067,9 +1156,8 @@ class InfrastructureStation(models.Model):
                             if line:
                                 line_ids.append(line.id)
                             else:
-                                _logger.warning("Line with external_id %s not found for station %s", line_id, station.get('id'))
+                                _logger.warning("Line with external_id %s not found for station %s", line_id, external_id)
 
-                        # Validate JSON fields
                         paths = json.dumps(station.get('paths', []))
                         changes = json.dumps(station.get('changes', {}) if station.get('changes') is not None else {})
                         schedule = json.dumps(station.get('schedule', []))
@@ -1077,7 +1165,7 @@ class InfrastructureStation(models.Model):
                             try:
                                 json.loads(value)
                             except json.JSONDecodeError:
-                                _logger.warning("Invalid %s format for station %s: %s. Using default.", field, station.get('id'), value)
+                                _logger.warning("Invalid %s format for station %s: %s. Using default.", field, external_id, value)
                                 if field == 'paths':
                                     paths = '[]'
                                 elif field == 'changes':
@@ -1085,34 +1173,119 @@ class InfrastructureStation(models.Model):
                                 elif field == 'schedule':
                                     schedule = '[]'
 
-                        # Prepare data
                         station_data = {
-                            'name_ar': station.get('nameAr', ''),
-                            'name_en': station.get('nameEn', ''),
-                            'name_fr': station.get('nameFr', ''),
-                            'latitude': station.get('lat', 0.0),
-                            'longitude': station.get('lng', 0.0),
+                            'name_ar': name_ar,
+                            'name_en': name_en,
+                            'name_fr': name_fr,
+                            'latitude': float(station.get('lat', 0.0)),
+                            'longitude': float(station.get('lng', 0.0)),
                             'paths': paths,
                             'changes': changes,
                             'schedule': schedule,
                             'line_ids': [(6, 0, line_ids)],
-                            'external_id': station.get('id')
+                            'external_id': external_id
                         }
 
-                        # Upsert in Odoo
-                        existing_station = self.search([('external_id', '=', station.get('id'))], limit=1)
-                        if existing_station:
-                            existing_station.write(station_data)
-                        else:
-                            self.create(station_data)
+                        with self.env.cr.savepoint():
+                            existing_station = self.search([('external_id', '=', external_id)], limit=1)
+                            if existing_station:
+                                existing_station.write(station_data)
+                                _logger.info("Updated station %s", external_id)
+                            else:
+                                self.create(station_data)
+                                _logger.info("Created station %s", external_id)
+                            synced_count += 1
+
                     except Exception as e:
                         _logger.error("Failed to sync station %s: %s", station.get('id', 'Unknown'), str(e))
+                        skipped_count += 1
                         continue
+
+                # Delete or archive stations not in the API response
+                odoo_stations = self.search([('external_id', '!=', False)])
+                for station in odoo_stations:
+                    if station.external_id not in api_station_ids:
+                        try:
+                            station.unlink()  # Delete the station
+                            _logger.info("Deleted stale station with external_id %s", station.external_id)
+                        except Exception as e:
+                            _logger.error("Failed to delete stale station %s: %s", station.external_id, str(e))
+
+                if skipped_count > 10:
+                    self.env['mail.activity'].create({
+                        'res_model': 'ir.cron',
+                        'res_id': self.env.ref('infrastructure_management.cron_sync_stations').id,
+                        'activity_type_id': self.env.ref('mail.mail_activity_data_warning').id,
+                        'summary': 'Excessive Stations Skipped',
+                        'note': f'Skipped {skipped_count} stations during sync. Check API data.',
+                        'user_id': self.env.ref('base.user_admin').id,
+                    })
+
+                message = f"Synced {synced_count} stations, skipped {skipped_count} stations."
+                _logger.info(message)
+                return {
+                    'synced': synced_count,
+                    'skipped': skipped_count,
+                    'message': message
+                }
+
             else:
                 raise UserError(f"Failed to fetch stations from API: {response.text} (Status: {response.status_code})")
         except requests.RequestException as e:
-            _logger.error("API GET request failed: %s", str(e))
-            raise UserError(f"API request failed: {str(e)}")
+            _logger.error("Station sync failed: %s", str(e))
+            self.env['mail.activity'].create({
+                'res_model': 'ir.cron',
+                'res_id': self.env.ref('infrastructure_management.cron_sync_stations').id,
+                'activity_type_id': self.env.ref('mail.mail_activity_data_warning').id,
+                'summary': 'Station Sync Failure',
+                'note': f'Sync failed: {str(e)}',
+                'user_id': self.env.ref('base.user_admin').id,
+            })
+            raise UserError(f"Station sync failed: {str(e)}")
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\infrastructure_management\models\sync.py
+from odoo import models, api
+
+class InfrastructureSync(models.TransientModel):
+    _name = 'infrastructure.sync'
+    _description = 'Infrastructure Sync'
+
+    def action_manual_sync(self, *args, **kwargs):
+        """Trigger manual sync for Stations, Lines, and Line Stations."""
+        try:
+            # Sync Stations first
+            self.env['infrastructure.station'].sync_stations_from_api()
+            # Sync Lines (depends on Stations)
+            self.env['infrastructure.line'].sync_lines_from_api()
+            # Sync Line Stations (depends on Lines and Stations)
+            self.env['infrastructure.line.station'].sync_linestations_from_api()
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Success',
+                    'message': 'Manual synchronization completed successfully.',
+                    'type': 'success',
+                    'sticky': False,
+                }
+            }
+        except Exception as e:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Error',
+                    'message': f'Manual synchronization failed: {str(e)}',
+                    'type': 'danger',
+                    'sticky': True,
+                }
+            }
 
 
 
@@ -1122,9 +1295,9 @@ class InfrastructureStation(models.Model):
 
 // C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\infrastructure_management\models\__init__.py
 from . import line
-from . import line_type
 from . import station
 from . import line_station
+from . import sync
 
 
 
@@ -1146,9 +1319,9 @@ from . import line_station
 // C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\infrastructure_management\security\ir.model.access.csv
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_infrastructure_line,infrastructure.line,model_infrastructure_line,base.group_user,1,1,1,1
-access_infrastructure_line_type,infrastructure.line.type,model_infrastructure_line_type,base.group_user,1,1,1,1
 access_infrastructure_station,infrastructure.station,model_infrastructure_station,base.group_user,1,1,1,1
 access_infrastructure_line_station,infrastructure.line.station,model_infrastructure_line_station,base.group_user,1,1,1,1
+access_infrastructure_sync,infrastructure.sync,model_infrastructure_sync,base.group_system,1,1,1,1
 
 
 
@@ -1178,6 +1351,38 @@ access_infrastructure_line_station,infrastructure.line.station,model_infrastruct
 
 //     [Folder] xml
 
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\infrastructure_management\static\src\xml\line_map_templates.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="infrastructure_management.line_map">
+        <div class="o_line_map_container" style="height: 100%; width: 100%;">
+            <div t-ref="map" id="line_map" style="height: 600px; width: 100%;"></div>
+        </div>
+    </t>
+</templates>
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\infrastructure_management\static\src\xml\line_station_map_templates.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="infrastructure_management.LineStationMapTemplate">
+        <div class="o_line_station_map_container" style="height: 100%; width: 100%;">
+            <div t-ref="map" id="map" style="height: 100%; width: 100%;"></div>
+        </div>
+    </t>
+</templates>
 
 
 
@@ -1219,139 +1424,96 @@ access_infrastructure_line_station,infrastructure.line.station,model_infrastruct
 // C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\infrastructure_management\views\line_station_views.xml
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-    <record id="view_infrastructure_line_station_tree" model="ir.ui.view">
-        <field name="name">infrastructure.line.station.tree</field>
-        <field name="model">infrastructure.line.station</field>
-        <field name="arch" type="xml">
-            <tree string="Line Stations">
-                <field name="order"/>
-                <field name="stop_duration"/>
-                <field name="direction"/>
-                <field name="radius"/>
-                <field name="lat"/>
-                <field name="lng"/>
-                <field name="line_id"/>
-                <field name="station_id"/>
-                <field name="alertable"/>
-                <field name="efficient"/>
-                <field name="duration"/>
-                <field name="external_id" readonly="1"/>
-            </tree>
-        </field>
-    </record>
-
-    <record id="view_infrastructure_line_station_form" model="ir.ui.view">
-        <field name="name">infrastructure.line.station.form</field>
-        <field name="model">infrastructure.line.station</field>
-        <field name="arch" type="xml">
-            <form string="Line Station">
-                <sheet>
-                    <group>
-                        <group string="Line Station Details">
-                            <field name="order" required="1"/>
-                            <field name="stop_duration"/>
-                            <field name="direction" required="1"/>
-                            <field name="radius"/>
-                            <field name="lat"/>
-                            <field name="lng"/>
-                            <field name="alertable"/>
-                            <field name="efficient"/>
-                            <field name="duration"/>
-                            <field name="external_id" readonly="1"/>
-                        </group>
-                        <group string="References">
-                            <field name="line_id" required="1" options="{'no_create': True, 'no_open': True}"/>
-                            <field name="station_id" required="1" options="{'no_create': True, 'no_open': True}"/>
-                        </group>
-                    </group>
-                </sheet>
-            </form>
-        </field>
-    </record>
-
-    <record id="view_infrastructure_line_station_search" model="ir.ui.view">
-        <field name="name">infrastructure.line.station.search</field>
-        <field name="model">infrastructure.line.station</field>
-        <field name="arch" type="xml">
-            <search string="Line Stations">
-                <field name="line_id"/>
-                <field name="station_id"/>
-                <field name="external_id"/>
-                <filter string="Going Direction" name="going_direction" domain="[('direction', '=', 'GOING')]"/>
-                <filter string="Returning Direction" name="returning_direction" domain="[('direction', '=', 'RETURNING')]"/>
-                <filter string="With External ID" name="with_external_id" domain="[('external_id', '!=', False)]"/>
-                <group expand="0" string="Group By">
-                    <filter string="Line" name="group_by_line" context="{'group_by': 'line_id'}"/>
-                    <filter string="Station" name="group_by_station" context="{'group_by': 'station_id'}"/>
-                    <filter string="Direction" name="group_by_direction" context="{'group_by': 'direction'}"/>
-                </group>
-            </search>
-        </field>
-    </record>
-
-    <record id="action_infrastructure_line_station" model="ir.actions.act_window">
-        <field name="name">Line Stations</field>
-        <field name="res_model">infrastructure.line.station</field>
-        <field name="view_mode">tree,form</field>
-        <field name="view_id" ref="view_infrastructure_line_station_tree"/>
-        <field name="search_view_id" ref="view_infrastructure_line_station_search"/>
-    </record>
-
-    <record id="action_sync_line_stations" model="ir.actions.server">
-        <field name="name">Sync Line Stations from API</field>
-        <field name="model_id" ref="model_infrastructure_line_station"/>
-        <field name="state">code</field>
-        <field name="code">
-            action = env['infrastructure.line.station'].sync_linestations_from_api()
-        </field>
-    </record>
-
-    <record id="action_clean_duplicate_line_stations" model="ir.actions.server">
-        <field name="name">Clean Duplicate Line Stations</field>
-        <field name="model_id" ref="model_infrastructure_line_station"/>
-        <field name="state">code</field>
-        <field name="code">
-            action = env['infrastructure.line.station'].clean_duplicate_line_stations()
-        </field>
-    </record>
-</odoo>
-
-
-
-
-
-
-
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\infrastructure_management\views\line_type_views.xml
-<?xml version="1.0" encoding="utf-8"?>
-<odoo>
     <data>
-        <!-- Form View for Line Type -->
-        <record id="infrastructure_line_type_form_view" model="ir.ui.view">
-            <field name="name">infrastructure.line.type.form</field>
-            <field name="model">infrastructure.line.type</field>
+        <!-- Delete conflicting ir.actions.act_window record -->
+        <delete model="ir.actions.act_window" id="infrastructure_management.action_infrastructure_line_station_map"/>
+
+        <!-- Line Station Tree View -->
+        <record id="view_infrastructure_line_station_tree" model="ir.ui.view">
+            <field name="name">infrastructure.line.station.tree</field>
+            <field name="model">infrastructure.line.station</field>
             <field name="arch" type="xml">
-                <form string="Line Type">
+                <tree string="Line Stations">
+                    <field name="order"/>
+                    <field name="stop_duration"/>
+                    <field name="direction"/>
+                    <field name="radius"/>
+                    <field name="lat"/>
+                    <field name="lng"/>
+                    <field name="line_id" widget="many2one"/>
+                    <field name="station_id" widget="many2one"/>
+                    <field name="alertable"/>
+                    <field name="efficient"/>
+                    <field name="duration"/>
+                    <field name="external_id" readonly="1"/>
+                </tree>
+            </field>
+        </record>
+
+        <!-- Line Station Form View -->
+        <record id="view_infrastructure_line_station_form" model="ir.ui.view">
+            <field name="name">infrastructure.line.station.form</field>
+            <field name="model">infrastructure.line.station</field>
+            <field name="arch" type="xml">
+                <form string="Line Station">
                     <sheet>
                         <group>
-                            <field name="name" required="1"/>
-                            <field name="code" required="1"/>
+                            <group string="Line Station Details">
+                                <field name="order" required="1"/>
+                                <field name="stop_duration"/>
+                                <field name="direction" required="1"/>
+                                <field name="radius"/>
+                                <field name="lat"/>
+                                <field name="lng"/>
+                                <field name="alertable"/>
+                                <field name="efficient"/>
+                                <field name="duration"/>
+                                <field name="external_id" readonly="1"/>
+                            </group>
+                            <group string="References">
+                                <field name="line_id" required="1" widget="selection" options="{'no_create': True, 'no_open': True}"/>
+                                <field name="station_id" required="1" widget="selection" options="{'no_create': True, 'no_open': True}"/>
+                            </group>
                         </group>
                     </sheet>
                 </form>
             </field>
         </record>
 
-        <!-- Tree View for Line Type -->
-        <record id="infrastructure_line_type_tree_view" model="ir.ui.view">
-            <field name="name">infrastructure.line.type.tree</field>
-            <field name="model">infrastructure.line.type</field>
+        <!-- Line Station Search View -->
+        <record id="view_infrastructure_line_station_search" model="ir.ui.view">
+            <field name="name">infrastructure.line.station.search</field>
+            <field name="model">infrastructure.line.station</field>
             <field name="arch" type="xml">
-                <tree string="Line Types">
-                    <field name="name"/>
-                    <field name="code"/>
-                </tree>
+                <search string="Line Stations">
+                    <field name="line_id"/>
+                    <field name="station_id"/>
+                    <field name="external_id"/>
+                    <filter string="Going Direction" name="going_direction" domain="[('direction', '=', 'GOING')]"/>
+                    <filter string="Returning Direction" name="returning_direction" domain="[('direction', '=', 'RETURNING')]"/>
+                    <filter string="With External ID" name="with_external_id" domain="[('external_id', '!=', False)]"/>
+                    <group expand="0" string="Group By">
+                        <filter string="Line" name="group_by_line" context="{'group_by': 'line_id'}"/>
+                        <filter string="Station" name="group_by_station" context="{'group_by': 'station_id'}"/>
+                        <filter string="Direction" name="group_by_direction" context="{'group_by': 'direction'}"/>
+                    </group>
+                </search>
             </field>
+        </record>
+
+        <!-- Line Station List Action -->
+        <record id="action_infrastructure_line_station" model="ir.actions.act_window">
+            <field name="name">Line Stations</field>
+            <field name="res_model">infrastructure.line.station</field>
+            <field name="view_mode">tree,form</field>
+            <field name="view_id" ref="view_infrastructure_line_station_tree"/>
+            <field name="search_view_id" ref="view_infrastructure_line_station_search"/>
+        </record>
+
+        <!-- Line Station Map Action -->
+        <record id="action_infrastructure_line_station_map" model="ir.actions.client">
+            <field name="name">Line Stations Map</field>
+            <field name="tag">line_station_map_tag</field>
         </record>
     </data>
 </odoo>
@@ -1363,66 +1525,90 @@ access_infrastructure_line_station,infrastructure.line.station,model_infrastruct
 
 
 // C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\infrastructure_management\views\line_views.xml
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
-        <!-- Form View for Infrastructure Line -->
-        <record id="infrastructure_line_form_view" model="ir.ui.view">
+        <!-- Line Tree View -->
+        <record id="view_infrastructure_line_tree" model="ir.ui.view">
+            <field name="name">infrastructure.line.tree</field>
+            <field name="model">infrastructure.line</field>
+            <field name="arch" type="xml">
+                <tree string="Lines">
+                    <field name="enterprise_code"/>
+                    <field name="code"/>
+                    <field name="color" widget="color"/>
+                    <field name="departure_station_id" widget="many2one"/>
+                    <field name="terminus_station_id" widget="many2one"/>
+                    <field name="external_id" readonly="1"/>
+                </tree>
+            </field>
+        </record>
+
+        <!-- Line Form View -->
+        <record id="view_infrastructure_line_form" model="ir.ui.view">
             <field name="name">infrastructure.line.form</field>
             <field name="model">infrastructure.line</field>
             <field name="arch" type="xml">
-                <form string="Infrastructure Line">
+                <form string="Line">
                     <sheet>
                         <group>
-                            <field name="code" required="1"/>
-                            <field name="color" required="1" widget="color"/>
-                            <field name="line_type_id" required="1" options="{'no_create': True, 'no_open': True}"/>
-                            <field name="enterprise_code" required="1"/>
-                            <field name="departure_station_id" required="1" options="{'no_create': True, 'no_open': True}"/>
-                            <field name="terminus_station_id" required="1" options="{'no_create': True, 'no_open': True}"/>
+                            <group string="Line Details">
+                                <field name="enterprise_code" required="1"/>
+                                <field name="code" required="1"/>
+                                <field name="color" required="1" widget="color_picker"/>
+                                <field name="external_id" readonly="1"/>
+                            </group>
+                            <group string="Stations">
+                                <field name="departure_station_id" widget="selection" options="{'no_create': True, 'no_open': True}"/>
+                                <field name="terminus_station_id" widget="selection" options="{'no_create': True, 'no_open': True}"/>
+                            </group>
+                        </group>
+                        <group string="Additional Information">
                             <field name="schedule"/>
-                            <field name="external_id" readonly="1"/>
                         </group>
                     </sheet>
                 </form>
             </field>
         </record>
 
-        <!-- Tree View for Infrastructure Line -->
-        <record id="infrastructure_line_tree_view" model="ir.ui.view">
-            <field name="name">infrastructure.line.tree</field>
+        <!-- Line Search View -->
+        <record id="view_infrastructure_line_search" model="ir.ui.view">
+            <field name="name">infrastructure.line.search</field>
             <field name="model">infrastructure.line</field>
             <field name="arch" type="xml">
-                <tree string="Infrastructure Lines">
-                    <field name="code"/>
-                    <field name="color" widget="color"/>
-                    <field name="line_type_id"/>
+                <search string="Lines">
                     <field name="enterprise_code"/>
-                    <field name="departure_station_id"/>
-                    <field name="terminus_station_id"/>
-                    <field name="schedule"/>
+                    <field name="code"/>
                     <field name="external_id"/>
-                </tree>
+                    <filter string="With External ID" name="with_external_id" domain="[('external_id', '!=', False)]"/>
+                    <group expand="0" string="Group By">
+                        <filter string="Departure Station" name="group_by_departure" context="{'group_by': 'departure_station_id'}"/>
+                        <filter string="Terminus Station" name="group_by_terminus" context="{'group_by': 'terminus_station_id'}"/>
+                    </group>
+                </search>
             </field>
         </record>
 
-        <!-- Action for Infrastructure Line -->
+        <!-- Line List Action -->
         <record id="action_infrastructure_line" model="ir.actions.act_window">
-            <field name="name">Infrastructure Lines</field>
+            <field name="name">Lines</field>
             <field name="res_model">infrastructure.line</field>
             <field name="view_mode">tree,form</field>
-            <field name="view_id" ref="infrastructure_line_tree_view"/>
+            <field name="view_id" ref="view_infrastructure_line_tree"/>
+            <field name="search_view_id" ref="view_infrastructure_line_search"/>
         </record>
 
-        <!-- Action for Sync Lines -->
-        <record id="action_sync_lines" model="ir.actions.server">
-            <field name="name">Sync Lines from API</field>
-            <field name="model_id" ref="model_infrastructure_line"/>
-            <field name="state">code</field>
-            <field name="code">
-                action = env['infrastructure.line'].sync_lines_from_api()
-            </field>
+        <!-- Delete the old ir.actions.act_window record -->
+        <delete model="ir.actions.act_window" id="infrastructure_management.action_infrastructure_line_map"/>
+
+        <!-- Line Map Action (Client Action for OWL Component) -->
+        <record id="action_infrastructure_line_map" model="ir.actions.client">
+            <field name="name">Lines Map</field>
+            <field name="tag">line_map_tag</field>
         </record>
+
+        <!-- Remove Manual Sync Action -->
+        <delete model="ir.actions.server" id="infrastructure_management.action_sync_lines"/>
     </data>
 </odoo>
 
@@ -1433,129 +1619,94 @@ access_infrastructure_line_station,infrastructure.line.station,model_infrastruct
 
 
 // C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\infrastructure_management\views\menu.xml
-<?xml version="1.0" encoding="utf-8"?>
-<odoo>
-    <data>
-        <!-- Root Menu -->
-        <menuitem id="menu_infrastructure_root"
-                  name="Infrastructure"
-                  sequence="10"/>
-
-        <!-- Line Type Menu -->
-        <record id="action_infrastructure_line_type" model="ir.actions.act_window">
-            <field name="name">Line Types</field>
-            <field name="res_model">infrastructure.line.type</field>
-            <field name="view_mode">tree,form</field>
-        </record>
-        <menuitem id="menu_infrastructure_line_type"
-                  name="Line Types"
-                  parent="menu_infrastructure_root"
-                  action="action_infrastructure_line_type"
-                  sequence="5"/>
-
-        <!-- Station Menu -->
-        <record id="action_infrastructure_station" model="ir.actions.act_window">
-            <field name="name">Stations</field>
-            <field name="res_model">infrastructure.station</field>
-            <field name="view_mode">tree,form</field>
-        </record>
-        <menuitem id="menu_infrastructure_station"
-                  name="Stations"
-                  parent="menu_infrastructure_root"
-                  action="action_infrastructure_station"
-                  sequence="7"/>
-
-        <!-- Sync Stations Action -->
-        <record id="action_sync_stations" model="ir.actions.server">
-            <field name="name">Sync Stations from API</field>
-            <field name="model_id" ref="model_infrastructure_station"/>
-            <field name="state">code</field>
-            <field name="code">
-                action = env['infrastructure.station'].sync_stations_from_api()
-            </field>
-        </record>
-        <menuitem id="menu_sync_stations"
-                  name="Sync Stations"
-                  parent="menu_infrastructure_root"
-                  action="action_sync_stations"
-                  sequence="8"/>
-
-        <!-- Line Menu -->
-        <record id="action_infrastructure_line" model="ir.actions.act_window">
-            <field name="name">Lines</field>
-            <field name="res_model">infrastructure.line</field>
-            <field name="view_mode">tree,form</field>
-        </record>
-        <menuitem id="menu_infrastructure_line"
-                  name="Lines"
-                  parent="menu_infrastructure_root"
-                  action="action_infrastructure_line"
-                  sequence="10"/>
-
-        <!-- Sync Lines Action -->
-        <record id="action_sync_lines" model="ir.actions.server">
-            <field name="name">Sync Lines from API</field>
-            <field name="model_id" ref="model_infrastructure_line"/>
-            <field name="state">code</field>
-            <field name="code">
-                action = env['infrastructure.line'].sync_lines_from_api()
-            </field>
-        </record>
-        <menuitem id="menu_sync_lines"
-                  name="Sync Lines"
-                  parent="menu_infrastructure_root"
-                  action="action_sync_lines"
-                  sequence="11"/>
-
-        <!-- Line Station Menu -->
-        <record id="action_infrastructure_line_station" model="ir.actions.act_window">
-            <field name="name">Line Stations</field>
-            <field name="res_model">infrastructure.line.station</field>
-            <field name="view_mode">tree,form</field>
-        </record>
-        <menuitem id="menu_infrastructure_line_station"
-                  name="Line Stations"
-                  parent="menu_infrastructure_root"
-                  action="action_infrastructure_line_station"
-                  sequence="12"/>
-
-        <!-- Sync Line Stations Action -->
-        <record id="action_sync_line_stations" model="ir.actions.server">
-            <field name="name">Sync Line Stations from API</field>
-            <field name="model_id" ref="model_infrastructure_line_station"/>
-            <field name="state">code</field>
-            <field name="code">
-                action = env['infrastructure.line.station'].sync_linestations_from_api()
-            </field>
-        </record>
-        <menuitem id="menu_sync_line_stations"
-                  name="Sync Line Stations"
-                  parent="menu_infrastructure_root"
-                  action="action_sync_line_stations"
-                  sequence="13"/>
-
-        <!-- Station Map Menu -->
-        <menuitem id="menu_station_map"
-                  name="Station Map"
-                  parent="menu_infrastructure_root"
-                  action="action_station_map"
-                  sequence="14"/>
-    </data>
-</odoo>
-
-
-
-
-
-
-
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\infrastructure_management\views\station_map_action.xml
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-    <record id="action_station_map" model="ir.actions.client">
-        <field name="name">Station Map</field>
-        <field name="tag">station_map_tag</field>
-    </record>
+    <data>
+        <!-- Top-level menu: Infrastructure -->
+        <menuitem
+            id="menu_infrastructure_root"
+            name="Infrastructure"
+            sequence="10"
+        />
+
+        <!-- Stations sub-menu -->
+        <menuitem
+            id="menu_infrastructure_stations"
+            name="Stations"
+            parent="menu_infrastructure_root"
+            sequence="10"
+        />
+
+        <!-- Stations: List View -->
+        <menuitem
+            id="menu_infrastructure_stations_list"
+            name="List View"
+            parent="menu_infrastructure_stations"
+            action="infrastructure_management.action_infrastructure_station"
+            sequence="10"
+        />
+
+        <!-- Stations: Map View -->
+        <menuitem
+            id="menu_infrastructure_stations_map"
+            name="Map View"
+            parent="menu_infrastructure_stations"
+            action="infrastructure_management.action_infrastructure_station_map"
+            sequence="20"
+        />
+
+        <!-- Lines sub-menu -->
+        <menuitem
+            id="menu_infrastructure_lines"
+            name="Lines"
+            parent="menu_infrastructure_root"
+            sequence="20"
+        />
+
+        <!-- Lines: List View -->
+        <menuitem
+            id="menu_infrastructure_lines_list"
+            name="List View"
+            parent="menu_infrastructure_lines"
+            action="infrastructure_management.action_infrastructure_line"
+            sequence="10"
+        />
+
+        <!-- Lines: Map View -->
+        <menuitem
+            id="menu_infrastructure_lines_map"
+            name="Map View"
+            parent="menu_infrastructure_lines"
+            action="infrastructure_management.action_infrastructure_line_map"
+            sequence="20"
+        />
+
+        <!-- Line Stations sub-menu -->
+        <menuitem
+            id="menu_infrastructure_line_stations"
+            name="Line Stations"
+            parent="menu_infrastructure_root"
+            sequence="30"
+        />
+
+        <!-- Line Stations: List View -->
+        <menuitem
+            id="menu_infrastructure_line_stations_list"
+            name="List View"
+            parent="menu_infrastructure_line_stations"
+            action="infrastructure_management.action_infrastructure_line_station"
+            sequence="10"
+        />
+
+        <!-- Line Stations: Map View -->
+        <menuitem
+            id="menu_infrastructure_line_stations_map"
+            name="Map View"
+            parent="menu_infrastructure_line_stations"
+            action="infrastructure_management.action_infrastructure_line_station_map"
+            sequence="20"
+        />
+    </data>
 </odoo>
 
 
@@ -1567,80 +1718,135 @@ access_infrastructure_line_station,infrastructure.line.station,model_infrastruct
 // C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\infrastructure_management\views\station_views.xml
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-    <!-- Tree View -->
-    <record id="view_infrastructure_station_tree" model="ir.ui.view">
-        <field name="name">infrastructure.station.tree</field>
-        <field name="model">infrastructure.station</field>
-        <field name="arch" type="xml">
-            <tree string="Stations">
-                <field name="name_en"/>
-                <field name="name_ar"/>
-                <field name="name_fr"/>
-                <field name="latitude"/>
-                <field name="longitude"/>
-                <field name="external_id" readonly="1"/>
-                <field name="line_ids" widget="many2many_tags"/>
-            </tree>
-        </field>
-    </record>
+    <data>
+        <!-- Station Tree View -->
+        <record id="view_infrastructure_station_tree" model="ir.ui.view">
+            <field name="name">infrastructure.station.tree</field>
+            <field name="model">infrastructure.station</field>
+            <field name="arch" type="xml">
+                <tree string="Stations">
+                    <field name="name_en"/>
+                    <field name="name_ar"/>
+                    <field name="name_fr"/>
+                    <field name="latitude"/>
+                    <field name="longitude"/>
+                    <field name="line_ids" widget="many2many_tags"/>
+                    <field name="external_id" readonly="1"/>
+                </tree>
+            </field>
+        </record>
 
-    <!-- Form View -->
-    <record id="view_infrastructure_station_form" model="ir.ui.view">
-        <field name="name">infrastructure.station.form</field>
-        <field name="model">infrastructure.station</field>
-        <field name="arch" type="xml">
-            <form string="Station">
-                <sheet>
-                    <group>
-                        <group string="Station Details">
-                            <field name="name_ar" required="1"/>
-                            <field name="name_en" required="1"/>
-                            <field name="name_fr" required="1"/>
-                            <field name="latitude"/>
-                            <field name="longitude"/>
-                            <field name="external_id" readonly="1"/>
+        <!-- Station Form View -->
+        <record id="view_infrastructure_station_form" model="ir.ui.view">
+            <field name="name">infrastructure.station.form</field>
+            <field name="model">infrastructure.station</field>
+            <field name="arch" type="xml">
+                <form string="Station">
+                    <sheet>
+                        <group>
+                            <group string="Station Details">
+                                <field name="name_en" required="1"/>
+                                <field name="name_ar" required="1"/>
+                                <field name="name_fr" required="1"/>
+                                <field name="latitude"/>
+                                <field name="longitude"/>
+                                <field name="external_id" readonly="1"/>
+                            </group>
+                            <group string="Additional Information">
+                                <field name="paths"/>
+                                <field name="schedule"/>
+                                <field name="changes"/>
+                                <field name="line_ids" widget="many2many_tags"/>
+                            </group>
                         </group>
-                        <group string="Associated Lines">
-                            <field name="line_ids" widget="many2many_tags" options="{'no_create': True, 'no_open': True}"/>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- Station Search View -->
+        <record id="view_infrastructure_station_search" model="ir.ui.view">
+            <field name="name">infrastructure.station.search</field>
+            <field name="model">infrastructure.station</field>
+            <field name="arch" type="xml">
+                <search string="Stations">
+                    <field name="name_en"/>
+                    <field name="name_ar"/>
+                    <field name="name_fr"/>
+                    <field name="external_id"/>
+                    <filter string="With External ID" name="with_external_id" domain="[('external_id', '!=', False)]"/>
+                    <filter string="Without External ID" name="without_external_id" domain="[('external_id', '=', False)]"/>
+                    <group expand="0" string="Group By">
+                        <filter string="Lines" name="group_by_lines" context="{'group_by': 'line_ids'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <!-- Station List Action -->
+        <record id="action_infrastructure_station" model="ir.actions.act_window">
+            <field name="name">Stations</field>
+            <field name="res_model">infrastructure.station</field>
+            <field name="view_mode">tree,form</field>
+            <field name="view_id" ref="view_infrastructure_station_tree"/>
+            <field name="search_view_id" ref="view_infrastructure_station_search"/>
+        </record>
+
+        <!-- Station Map Action -->
+        <record id="action_infrastructure_station_map" model="ir.actions.client">
+            <field name="name">Stations Map</field>
+            <field name="tag">station_map_tag</field>
+        </record>
+    </data>
+</odoo>
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\infrastructure_management\views\sync_views.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+        <!-- Sync Form View -->
+        <record id="view_infrastructure_sync_form" model="ir.ui.view">
+            <field name="name">infrastructure.sync.form</field>
+            <field name="model">infrastructure.sync</field>
+            <field name="arch" type="xml">
+                <form string="Manual Sync">
+                    <sheet>
+                        <group>
+                            <p>Click the button below to manually synchronize Stations, Lines, and Line Stations from the external API.</p>
                         </group>
-                    </group>
-                    <group string="API Data">
-                        <field name="paths" widget="char" placeholder='e.g., []'/>
-                        <field name="changes" widget="char" placeholder='e.g., {}'/>
-                        <field name="schedule" widget="char" placeholder='e.g., ["08:00", "09:00"]'/>
-                    </group>
-                </sheet>
-            </form>
-        </field>
-    </record>
+                        <footer>
+                            <button name="action_manual_sync" type="object" string="Sync Now" class="btn-primary"/>
+                            <button special="cancel" string="Cancel" class="btn-secondary"/>
+                        </footer>
+                    </sheet>
+                </form>
+            </field>
+        </record>
 
-    <!-- Search View -->
-    <record id="view_infrastructure_station_search" model="ir.ui.view">
-        <field name="name">infrastructure.station.search</field>
-        <field name="model">infrastructure.station</field>
-        <field name="arch" type="xml">
-            <search string="Stations">
-                <field name="name_en"/>
-                <field name="name_ar"/>
-                <field name="name_fr"/>
-                <field name="external_id"/>
-                <filter string="With External ID" name="with_external_id" domain="[('external_id', '!=', False)]"/>
-                <filter string="Without External ID" name="without_external_id" domain="[('external_id', '=', False)]"/>
-                <group expand="0" string="Group By">
-                    <filter string="English Name" name="group_by_name_en" context="{'group_by': 'name_en'}"/>
-                </group>
-            </search>
-        </field>
-    </record>
+        <!-- Sync Action -->
+        <record id="action_infrastructure_sync" model="ir.actions.act_window">
+            <field name="name">Manual Sync</field>
+            <field name="res_model">infrastructure.sync</field>
+            <field name="view_mode">form</field>
+            <field name="view_id" ref="view_infrastructure_sync_form"/>
+            <field name="target">new</field>
+        </record>
 
-    <!-- Action -->
-    <record id="action_infrastructure_station" model="ir.actions.act_window">
-        <field name="name">Stations</field>
-        <field name="res_model">infrastructure.station</field>
-        <field name="view_mode">tree,form</field>
-        <field name="view_id" ref="view_infrastructure_station_tree"/>
-        <field name="search_view_id" ref="view_infrastructure_station_search"/>
-    </record>
+        <!-- Menu Item -->
+        <menuitem
+            id="menu_infrastructure_sync"
+            name="Manual Sync"
+            parent="menu_infrastructure_root"
+            action="action_infrastructure_sync"
+            sequence="40"
+        />
+    </data>
 </odoo>
 
 
@@ -1663,29 +1869,37 @@ from . import models
 // C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo\odoo\custom_addons\infrastructure_management\__manifest__.py
 {
     'name': 'Infrastructure Management',
-    'version': '1.7',
+    'version': '1.10',
     'summary': 'Manage transportation lines, stations, and line stations',
     'description': 'A module to manage lines, stations, line stations, and integrate with etrans_infrastructure API.',
     'category': 'Tools',
-    'author': 'Your Name',
-    'depends': ['base', 'web'],
+    'author': 'kebiche fouez',
+    'depends': ['base', 'web', 'mail'],
     'data': [
         'security/ir.model.access.csv',
+        'data/cron.xml',
         'views/line_views.xml',
-        'views/line_type_views.xml',
         'views/station_views.xml',
         'views/line_station_views.xml',
-        'views/station_map_action.xml',
         'views/menu.xml',
+        'views/sync_views.xml',
     ],
     'assets': {
         'web.assets_backend': [
-            'infrastructure_management/static/src/js/station_map.js',
-            'infrastructure_management/static/src/xml/station_map_templates.xml',
-            'infrastructure_management/static/src/css/station_map.css',
+            'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
             'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
-            'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
-            'https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js',
+            'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js',
+            'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css',
+            'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css',
+            'infrastructure_management/static/src/css/station_map.css',
+            'infrastructure_management/static/src/css/line_map.css',
+            'infrastructure_management/static/src/css/line_station_map.css',
+            'infrastructure_management/static/src/js/station_map.js',
+            'infrastructure_management/static/src/js/line_map.js',
+            'infrastructure_management/static/src/js/line_station_map.js',
+            'infrastructure_management/static/src/xml/station_map_templates.xml',
+            'infrastructure_management/static/src/xml/line_map_templates.xml',
+            'infrastructure_management/static/src/xml/line_station_map_templates.xml',
         ],
     },
     'installable': True,

@@ -1,62 +1,86 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
-        <!-- Form View for Infrastructure Line -->
-        <record id="infrastructure_line_form_view" model="ir.ui.view">
+        <!-- Line Tree View -->
+        <record id="view_infrastructure_line_tree" model="ir.ui.view">
+            <field name="name">infrastructure.line.tree</field>
+            <field name="model">infrastructure.line</field>
+            <field name="arch" type="xml">
+                <tree string="Lines">
+                    <field name="enterprise_code"/>
+                    <field name="code"/>
+                    <field name="color" widget="color"/>
+                    <field name="departure_station_id" widget="many2one"/>
+                    <field name="terminus_station_id" widget="many2one"/>
+                    <field name="external_id" readonly="1"/>
+                </tree>
+            </field>
+        </record>
+
+        <!-- Line Form View -->
+        <record id="view_infrastructure_line_form" model="ir.ui.view">
             <field name="name">infrastructure.line.form</field>
             <field name="model">infrastructure.line</field>
             <field name="arch" type="xml">
-                <form string="Infrastructure Line">
+                <form string="Line">
                     <sheet>
                         <group>
-                            <field name="code" required="1"/>
-                            <field name="color" required="1" widget="color"/>
-                            <field name="line_type_id" required="1" options="{'no_create': True, 'no_open': True}"/>
-                            <field name="enterprise_code" required="1"/>
-                            <field name="departure_station_id" required="1" options="{'no_create': True, 'no_open': True}"/>
-                            <field name="terminus_station_id" required="1" options="{'no_create': True, 'no_open': True}"/>
+                            <group string="Line Details">
+                                <field name="enterprise_code" required="1"/>
+                                <field name="code" required="1"/>
+                                <field name="color" required="1" widget="color"/>
+                                <field name="external_id" readonly="1"/>
+                            </group>
+                            <group string="Stations">
+                                <field name="departure_station_id" widget="selection" options="{'no_create': True, 'no_open': True}"/>
+                                <field name="terminus_station_id" widget="selection" options="{'no_create': True, 'no_open': True}"/>
+                            </group>
+                        </group>
+                        <group string="Additional Information">
                             <field name="schedule"/>
-                            <field name="external_id" readonly="1"/>
                         </group>
                     </sheet>
                 </form>
             </field>
         </record>
 
-        <!-- Tree View for Infrastructure Line -->
-        <record id="infrastructure_line_tree_view" model="ir.ui.view">
-            <field name="name">infrastructure.line.tree</field>
+        <!-- Line Search View -->
+        <record id="view_infrastructure_line_search" model="ir.ui.view">
+            <field name="name">infrastructure.line.search</field>
             <field name="model">infrastructure.line</field>
             <field name="arch" type="xml">
-                <tree string="Infrastructure Lines">
-                    <field name="code"/>
-                    <field name="color" widget="color"/>
-                    <field name="line_type_id"/>
+                <search string="Lines">
                     <field name="enterprise_code"/>
-                    <field name="departure_station_id"/>
-                    <field name="terminus_station_id"/>
-                    <field name="schedule"/>
+                    <field name="code"/>
                     <field name="external_id"/>
-                </tree>
+                    <filter string="With External ID" name="with_external_id" domain="[('external_id', '!=', False)]"/>
+                    <group expand="0" string="Group By">
+                        <filter string="Departure Station" name="group_by_departure" context="{'group_by': 'departure_station_id'}"/>
+                        <filter string="Terminus Station" name="group_by_terminus" context="{'group_by': 'terminus_station_id'}"/>
+                    </group>
+                </search>
             </field>
         </record>
 
-        <!-- Action for Infrastructure Line -->
+        <!-- Line List Action -->
         <record id="action_infrastructure_line" model="ir.actions.act_window">
-            <field name="name">Infrastructure Lines</field>
+            <field name="name">Lines</field>
             <field name="res_model">infrastructure.line</field>
             <field name="view_mode">tree,form</field>
-            <field name="view_id" ref="infrastructure_line_tree_view"/>
+            <field name="view_id" ref="view_infrastructure_line_tree"/>
+            <field name="search_view_id" ref="view_infrastructure_line_search"/>
         </record>
 
-        <!-- Action for Sync Lines -->
-        <record id="action_sync_lines" model="ir.actions.server">
-            <field name="name">Sync Lines from API</field>
-            <field name="model_id" ref="model_infrastructure_line"/>
-            <field name="state">code</field>
-            <field name="code">
-                action = env['infrastructure.line'].sync_lines_from_api()
-            </field>
+        <!-- Delete the old ir.actions.act_window record -->
+        <delete model="ir.actions.act_window" id="infrastructure_management.action_infrastructure_line_map"/>
+
+        <!-- Line Map Action (Client Action for OWL Component) -->
+        <record id="action_infrastructure_line_map" model="ir.actions.client">
+            <field name="name">Lines Map</field>
+            <field name="tag">line_map_tag</field>
         </record>
+
+        <!-- Remove Manual Sync Action -->
+        <delete model="ir.actions.server" id="infrastructure_management.action_sync_lines"/>
     </data>
 </odoo>

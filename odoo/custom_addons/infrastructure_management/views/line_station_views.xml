@@ -1,98 +1,95 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-    <record id="view_infrastructure_line_station_tree" model="ir.ui.view">
-        <field name="name">infrastructure.line.station.tree</field>
-        <field name="model">infrastructure.line.station</field>
-        <field name="arch" type="xml">
-            <tree string="Line Stations">
-                <field name="order"/>
-                <field name="stop_duration"/>
-                <field name="direction"/>
-                <field name="radius"/>
-                <field name="lat"/>
-                <field name="lng"/>
-                <field name="line_id"/>
-                <field name="station_id"/>
-                <field name="alertable"/>
-                <field name="efficient"/>
-                <field name="duration"/>
-                <field name="external_id" readonly="1"/>
-            </tree>
-        </field>
-    </record>
+    <data>
+        <!-- Delete conflicting ir.actions.act_window record -->
+        <delete model="ir.actions.act_window" id="infrastructure_management.action_infrastructure_line_station_map"/>
 
-    <record id="view_infrastructure_line_station_form" model="ir.ui.view">
-        <field name="name">infrastructure.line.station.form</field>
-        <field name="model">infrastructure.line.station</field>
-        <field name="arch" type="xml">
-            <form string="Line Station">
-                <sheet>
-                    <group>
-                        <group string="Line Station Details">
-                            <field name="order" required="1"/>
-                            <field name="stop_duration"/>
-                            <field name="direction" required="1"/>
-                            <field name="radius"/>
-                            <field name="lat"/>
-                            <field name="lng"/>
-                            <field name="alertable"/>
-                            <field name="efficient"/>
-                            <field name="duration"/>
-                            <field name="external_id" readonly="1"/>
+        <!-- Line Station Tree View -->
+        <record id="view_infrastructure_line_station_tree" model="ir.ui.view">
+            <field name="name">infrastructure.line.station.tree</field>
+            <field name="model">infrastructure.line.station</field>
+            <field name="arch" type="xml">
+                <tree string="Line Stations">
+                    <field name="order"/>
+                    <field name="stop_duration"/>
+                    <field name="direction"/>
+                    <field name="radius"/>
+                    <field name="lat"/>
+                    <field name="lng"/>
+                    <field name="line_id" widget="many2one"/>
+                    <field name="station_id" widget="many2one"/>
+                    <field name="alertable"/>
+                    <field name="efficient"/>
+                    <field name="duration"/>
+                    <field name="external_id" readonly="1"/>
+                </tree>
+            </field>
+        </record>
+
+        <!-- Line Station Form View -->
+        <record id="view_infrastructure_line_station_form" model="ir.ui.view">
+            <field name="name">infrastructure.line.station.form</field>
+            <field name="model">infrastructure.line.station</field>
+            <field name="arch" type="xml">
+                <form string="Line Station">
+                    <sheet>
+                        <group>
+                            <group string="Line Station Details">
+                                <field name="order" required="1"/>
+                                <field name="stop_duration"/>
+                                <field name="direction" required="1"/>
+                                <field name="radius"/>
+                                <field name="lat"/>
+                                <field name="lng"/>
+                                <field name="alertable"/>
+                                <field name="efficient"/>
+                                <field name="duration"/>
+                                <field name="external_id" readonly="1"/>
+                            </group>
+                            <group string="References">
+                                <field name="line_id" required="1" widget="selection" options="{'no_create': True, 'no_open': True}"/>
+                                <field name="station_id" required="1" widget="selection" options="{'no_create': True, 'no_open': True}"/>
+                            </group>
                         </group>
-                        <group string="References">
-                            <field name="line_id" required="1" options="{'no_create': True, 'no_open': True}"/>
-                            <field name="station_id" required="1" options="{'no_create': True, 'no_open': True}"/>
-                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- Line Station Search View -->
+        <record id="view_infrastructure_line_station_search" model="ir.ui.view">
+            <field name="name">infrastructure.line.station.search</field>
+            <field name="model">infrastructure.line.station</field>
+            <field name="arch" type="xml">
+                <search string="Line Stations">
+                    <field name="line_id"/>
+                    <field name="station_id"/>
+                    <field name="external_id"/>
+                    <filter string="Going Direction" name="going_direction" domain="[('direction', '=', 'GOING')]"/>
+                    <filter string="Returning Direction" name="returning_direction" domain="[('direction', '=', 'RETURNING')]"/>
+                    <filter string="With External ID" name="with_external_id" domain="[('external_id', '!=', False)]"/>
+                    <group expand="0" string="Group By">
+                        <filter string="Line" name="group_by_line" context="{'group_by': 'line_id'}"/>
+                        <filter string="Station" name="group_by_station" context="{'group_by': 'station_id'}"/>
+                        <filter string="Direction" name="group_by_direction" context="{'group_by': 'direction'}"/>
                     </group>
-                </sheet>
-            </form>
-        </field>
-    </record>
+                </search>
+            </field>
+        </record>
 
-    <record id="view_infrastructure_line_station_search" model="ir.ui.view">
-        <field name="name">infrastructure.line.station.search</field>
-        <field name="model">infrastructure.line.station</field>
-        <field name="arch" type="xml">
-            <search string="Line Stations">
-                <field name="line_id"/>
-                <field name="station_id"/>
-                <field name="external_id"/>
-                <filter string="Going Direction" name="going_direction" domain="[('direction', '=', 'GOING')]"/>
-                <filter string="Returning Direction" name="returning_direction" domain="[('direction', '=', 'RETURNING')]"/>
-                <filter string="With External ID" name="with_external_id" domain="[('external_id', '!=', False)]"/>
-                <group expand="0" string="Group By">
-                    <filter string="Line" name="group_by_line" context="{'group_by': 'line_id'}"/>
-                    <filter string="Station" name="group_by_station" context="{'group_by': 'station_id'}"/>
-                    <filter string="Direction" name="group_by_direction" context="{'group_by': 'direction'}"/>
-                </group>
-            </search>
-        </field>
-    </record>
+        <!-- Line Station List Action -->
+        <record id="action_infrastructure_line_station" model="ir.actions.act_window">
+            <field name="name">Line Stations</field>
+            <field name="res_model">infrastructure.line.station</field>
+            <field name="view_mode">tree,form</field>
+            <field name="view_id" ref="view_infrastructure_line_station_tree"/>
+            <field name="search_view_id" ref="view_infrastructure_line_station_search"/>
+        </record>
 
-    <record id="action_infrastructure_line_station" model="ir.actions.act_window">
-        <field name="name">Line Stations</field>
-        <field name="res_model">infrastructure.line.station</field>
-        <field name="view_mode">tree,form</field>
-        <field name="view_id" ref="view_infrastructure_line_station_tree"/>
-        <field name="search_view_id" ref="view_infrastructure_line_station_search"/>
-    </record>
-
-    <record id="action_sync_line_stations" model="ir.actions.server">
-        <field name="name">Sync Line Stations from API</field>
-        <field name="model_id" ref="model_infrastructure_line_station"/>
-        <field name="state">code</field>
-        <field name="code">
-            action = env['infrastructure.line.station'].sync_linestations_from_api()
-        </field>
-    </record>
-
-    <record id="action_clean_duplicate_line_stations" model="ir.actions.server">
-        <field name="name">Clean Duplicate Line Stations</field>
-        <field name="model_id" ref="model_infrastructure_line_station"/>
-        <field name="state">code</field>
-        <field name="code">
-            action = env['infrastructure.line.station'].clean_duplicate_line_stations()
-        </field>
-    </record>
+        <!-- Line Station Map Action -->
+        <record id="action_infrastructure_line_station_map" model="ir.actions.client">
+            <field name="name">Line Stations Map</field>
+            <field name="tag">line_station_map_tag</field>
+        </record>
+    </data>
 </odoo>

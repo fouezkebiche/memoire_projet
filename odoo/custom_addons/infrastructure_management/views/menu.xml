@@ -1,109 +1,89 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
-        <!-- Root Menu -->
-        <menuitem id="menu_infrastructure_root"
-                  name="Infrastructure"
-                  sequence="10"/>
+        <!-- Top-level menu: Infrastructure -->
+        <menuitem
+            id="menu_infrastructure_root"
+            name="Infrastructure"
+            sequence="10"
+        />
 
-        <!-- Line Type Menu -->
-        <record id="action_infrastructure_line_type" model="ir.actions.act_window">
-            <field name="name">Line Types</field>
-            <field name="res_model">infrastructure.line.type</field>
-            <field name="view_mode">tree,form</field>
-        </record>
-        <menuitem id="menu_infrastructure_line_type"
-                  name="Line Types"
-                  parent="menu_infrastructure_root"
-                  action="action_infrastructure_line_type"
-                  sequence="5"/>
+        <!-- Stations sub-menu -->
+        <menuitem
+            id="menu_infrastructure_stations"
+            name="Stations"
+            parent="menu_infrastructure_root"
+            sequence="10"
+        />
 
-        <!-- Station Menu -->
-        <record id="action_infrastructure_station" model="ir.actions.act_window">
-            <field name="name">Stations</field>
-            <field name="res_model">infrastructure.station</field>
-            <field name="view_mode">tree,form</field>
-        </record>
-        <menuitem id="menu_infrastructure_station"
-                  name="Stations"
-                  parent="menu_infrastructure_root"
-                  action="action_infrastructure_station"
-                  sequence="7"/>
+        <!-- Stations: List View -->
+        <menuitem
+            id="menu_infrastructure_stations_list"
+            name="List View"
+            parent="menu_infrastructure_stations"
+            action="infrastructure_management.action_infrastructure_station"
+            sequence="10"
+        />
 
-        <!-- Sync Stations Action -->
-        <record id="action_sync_stations" model="ir.actions.server">
-            <field name="name">Sync Stations from API</field>
-            <field name="model_id" ref="model_infrastructure_station"/>
-            <field name="state">code</field>
-            <field name="code">
-                action = env['infrastructure.station'].sync_stations_from_api()
-            </field>
-        </record>
-        <menuitem id="menu_sync_stations"
-                  name="Sync Stations"
-                  parent="menu_infrastructure_root"
-                  action="action_sync_stations"
-                  sequence="8"/>
+        <!-- Stations: Map View -->
+        <menuitem
+            id="menu_infrastructure_stations_map"
+            name="Map View"
+            parent="menu_infrastructure_stations"
+            action="infrastructure_management.action_infrastructure_station_map"
+            sequence="20"
+        />
 
-        <!-- Line Menu -->
-        <record id="action_infrastructure_line" model="ir.actions.act_window">
-            <field name="name">Lines</field>
-            <field name="res_model">infrastructure.line</field>
-            <field name="view_mode">tree,form</field>
-        </record>
-        <menuitem id="menu_infrastructure_line"
-                  name="Lines"
-                  parent="menu_infrastructure_root"
-                  action="action_infrastructure_line"
-                  sequence="10"/>
+        <!-- Lines sub-menu -->
+        <menuitem
+            id="menu_infrastructure_lines"
+            name="Lines"
+            parent="menu_infrastructure_root"
+            sequence="20"
+        />
 
-        <!-- Sync Lines Action -->
-        <record id="action_sync_lines" model="ir.actions.server">
-            <field name="name">Sync Lines from API</field>
-            <field name="model_id" ref="model_infrastructure_line"/>
-            <field name="state">code</field>
-            <field name="code">
-                action = env['infrastructure.line'].sync_lines_from_api()
-            </field>
-        </record>
-        <menuitem id="menu_sync_lines"
-                  name="Sync Lines"
-                  parent="menu_infrastructure_root"
-                  action="action_sync_lines"
-                  sequence="11"/>
+        <!-- Lines: List View -->
+        <menuitem
+            id="menu_infrastructure_lines_list"
+            name="List View"
+            parent="menu_infrastructure_lines"
+            action="infrastructure_management.action_infrastructure_line"
+            sequence="10"
+        />
 
-        <!-- Line Station Menu -->
-        <record id="action_infrastructure_line_station" model="ir.actions.act_window">
-            <field name="name">Line Stations</field>
-            <field name="res_model">infrastructure.line.station</field>
-            <field name="view_mode">tree,form</field>
-        </record>
-        <menuitem id="menu_infrastructure_line_station"
-                  name="Line Stations"
-                  parent="menu_infrastructure_root"
-                  action="action_infrastructure_line_station"
-                  sequence="12"/>
+        <!-- Lines: Map View -->
+        <menuitem
+            id="menu_infrastructure_lines_map"
+            name="Map View"
+            parent="menu_infrastructure_lines"
+            action="infrastructure_management.action_infrastructure_line_map"
+            sequence="20"
+        />
 
-        <!-- Sync Line Stations Action -->
-        <record id="action_sync_line_stations" model="ir.actions.server">
-            <field name="name">Sync Line Stations from API</field>
-            <field name="model_id" ref="model_infrastructure_line_station"/>
-            <field name="state">code</field>
-            <field name="code">
-                action = env['infrastructure.line.station'].sync_linestations_from_api()
-            </field>
-        </record>
-        <menuitem id="menu_sync_line_stations"
-                  name="Sync Line Stations"
-                  parent="menu_infrastructure_root"
-                  action="action_sync_line_stations"
-                  sequence="13"/>
+        <!-- Line Stations sub-menu -->
+        <menuitem
+            id="menu_infrastructure_line_stations"
+            name="Line Stations"
+            parent="menu_infrastructure_root"
+            sequence="30"
+        />
 
-        <!-- Station Map Menu -->
-        <menuitem id="menu_station_map"
-                  name="Station Map"
-                  parent="menu_infrastructure_root"
-                  action="action_station_map"
-                  sequence="14"/>
+        <!-- Line Stations: List View -->
+        <menuitem
+            id="menu_infrastructure_line_stations_list"
+            name="List View"
+            parent="menu_infrastructure_line_stations"
+            action="infrastructure_management.action_infrastructure_line_station"
+            sequence="10"
+        />
+
+        <!-- Line Stations: Map View -->
+        <menuitem
+            id="menu_infrastructure_line_stations_map"
+            name="Map View"
+            parent="menu_infrastructure_line_stations"
+            action="infrastructure_management.action_infrastructure_line_station_map"
+            sequence="20"
+        />
     </data>
 </odoo>
