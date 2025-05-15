@@ -37,6 +37,7 @@ class InfrastructureLineStation(models.Model):
     efficient = fields.Boolean(string='Efficient', default=False)
     duration = fields.Integer(string='Duration', default=0)
     external_id = fields.Integer(string='External API ID', readonly=True)
+    location_picker = fields.Boolean(string='Location Picker', default=True)
 
     @api.constrains('lat', 'lng')
     def _check_coordinates(self):

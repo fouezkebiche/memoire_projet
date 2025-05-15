@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="infrastructure_management.StationLocationPickerTemplate">
+        <div class="o_station_location_picker" style="width: 100%; height: 300px; position: relative; z-index: 0;">
+            <div t-ref="map" style="width: 100%; height: 100%;"></div>
+        </div>
+    </t>
+</templates>

@@ -16,8 +16,8 @@ class InfrastructureStation(models.Model):
     name_ar = fields.Char(string='Name (Arabic)', required=True)
     name_en = fields.Char(string='Name (English)', required=True)
     name_fr = fields.Char(string='Name (French)', required=True)
-    latitude = fields.Float(string='Latitude', default=0.0)
-    longitude = fields.Float(string='Longitude', default=0.0)
+    latitude = fields.Float(string='Latitude', default=36.7538)  # Default to Algiers
+    longitude = fields.Float(string='Longitude', default=3.0588)
     line_ids = fields.Many2many(
         'infrastructure.line',
         string='Lines',
@@ -27,6 +27,7 @@ class InfrastructureStation(models.Model):
     changes = fields.Text(string='Changes', default='{}')
     schedule = fields.Text(string='Schedule', default='[]')
     external_id = fields.Integer(string='External API ID', readonly=True)
+    location_picker = fields.Boolean(string='Location Picker', default=True)  # Dummy field for widget
 
     @api.constrains('paths', 'changes', 'schedule')
     def _check_json_fields(self):
@@ -82,13 +83,11 @@ class InfrastructureStation(models.Model):
             _logger.info("API POST %s response: %s (Status: %s)", api_url, response.text, response.status_code)
             if response.status_code == 201:
                 try:
-                    # Try to parse as JSON first
                     response_data = response.json()
                     external_id = response_data.get('id')
                     if not external_id:
                         raise ValueError("No external_id found in JSON response")
                 except json.JSONDecodeError:
-                    # Fallback to parsing plain text (e.g., "Created Station with id: 30")
                     response_text = response.text.strip()
                     if "Created Station with id:" in response_text:
                         try:
@@ -100,7 +99,6 @@ class InfrastructureStation(models.Model):
                         _logger.error("Unexpected response format: %s", response_text)
                         raise UserError(f"Unexpected API response format: {response_text}")
                 
-                # Set external_id using SQL to avoid recursive write
                 self._cr.execute('UPDATE infrastructure_station SET external_id = %s WHERE id = %s', (external_id, record.id))
                 _logger.info("Assigned external_id %s to station %s", external_id, record.name_en)
             else:
@@ -207,7 +205,7 @@ class InfrastructureStation(models.Model):
 
                 synced_count = 0
                 skipped_count = 0
-                api_station_ids = set()  # Track IDs from API response
+                api_station_ids = set()
 
                 for station in stations:
                     try:
@@ -217,7 +215,7 @@ class InfrastructureStation(models.Model):
                             skipped_count += 1
                             continue
 
-                        api_station_ids.add(external_id)  # Add to set of valid IDs
+                        api_station_ids.add(external_id)
 
                         name_ar = station.get('nameAr', '')
                         name_en = station.get('nameEn', '')
@@ -280,12 +278,11 @@ class InfrastructureStation(models.Model):
                         skipped_count += 1
                         continue
 
-                # Delete or archive stations not in the API response
                 odoo_stations = self.search([('external_id', '!=', False)])
                 for station in odoo_stations:
                     if station.external_id not in api_station_ids:
                         try:
-                            station.unlink()  # Delete the station
+                            station.unlink()
                             _logger.info("Deleted stale station with external_id %s", station.external_id)
                         except Exception as e:
                             _logger.error("Failed to delete stale station %s: %s", station.external_id, str(e))

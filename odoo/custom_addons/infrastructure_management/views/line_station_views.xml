@@ -39,6 +39,7 @@
                                 <field name="stop_duration"/>
                                 <field name="direction" required="1"/>
                                 <field name="radius"/>
+                                <field name="location_picker" widget="line_station_location_picker"/>
                                 <field name="lat"/>
                                 <field name="lng"/>
                                 <field name="alertable"/>

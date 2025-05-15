@@ -1,6 +1,6 @@
 {
     'name': 'Infrastructure Management',
-    'version': '1.11',
+    'version': '1.16',  # Incremented from 1.15
     'summary': 'Manage transportation lines, stations, and line stations',
     'description': 'A module to manage lines, stations, line stations, and integrate with etrans_infrastructure API.',
     'category': 'Tools',
@@ -28,9 +28,13 @@
             'infrastructure_management/static/src/js/station_map.js',
             'infrastructure_management/static/src/js/line_map.js',
             'infrastructure_management/static/src/js/line_station_map.js',
+            'infrastructure_management/static/src/js/station_location_picker.js',
+            'infrastructure_management/static/src/js/line_station_location_picker.js',  # Added
             'infrastructure_management/static/src/xml/station_map_templates.xml',
             'infrastructure_management/static/src/xml/line_map_templates.xml',
             'infrastructure_management/static/src/xml/line_station_map_templates.xml',
+            'infrastructure_management/static/src/xml/station_location_picker_templates.xml',
+            'infrastructure_management/static/src/xml/line_station_location_picker_templates.xml',  # Added
         ],
     },
     'installable': True,

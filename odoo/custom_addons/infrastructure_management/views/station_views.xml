@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
-        <!-- Station Tree View -->
         <record id="view_infrastructure_station_tree" model="ir.ui.view">
             <field name="name">infrastructure.station.tree</field>
             <field name="model">infrastructure.station</field>
@@ -18,7 +17,6 @@
             </field>
         </record>
 
-        <!-- Station Form View -->
         <record id="view_infrastructure_station_form" model="ir.ui.view">
             <field name="name">infrastructure.station.form</field>
             <field name="model">infrastructure.station</field>
@@ -30,23 +28,25 @@
                                 <field name="name_en" required="1"/>
                                 <field name="name_ar" required="1"/>
                                 <field name="name_fr" required="1"/>
-                                <field name="latitude"/>
-                                <field name="longitude"/>
                                 <field name="external_id" readonly="1"/>
                             </group>
-                            <group string="Additional Information">
-                                <field name="paths"/>
-                                <field name="schedule"/>
-                                <field name="changes"/>
-                                <field name="line_ids" widget="many2many_tags"/>
+                            <group string="Location">
+                                <field name="location_picker" widget="station_location_picker"/>
+                                <field name="latitude"/>
+                                <field name="longitude"/>
                             </group>
+                        </group>
+                        <group string="Additional Information">
+                            <field name="paths"/>
+                            <field name="schedule"/>
+                            <field name="changes"/>
+                            <field name="line_ids" widget="many2many_tags"/>
                         </group>
                     </sheet>
                 </form>
             </field>
         </record>
 
-        <!-- Station Search View -->
         <record id="view_infrastructure_station_search" model="ir.ui.view">
             <field name="name">infrastructure.station.search</field>
             <field name="model">infrastructure.station</field>
@@ -65,7 +65,6 @@
             </field>
         </record>
 
-        <!-- Station List Action -->
         <record id="action_infrastructure_station" model="ir.actions.act_window">
             <field name="name">Stations</field>
             <field name="res_model">infrastructure.station</field>
@@ -74,7 +73,6 @@
             <field name="search_view_id" ref="view_infrastructure_station_search"/>
         </record>
 
-        <!-- Station Map Action -->
         <record id="action_infrastructure_station_map" model="ir.actions.client">
             <field name="name">Stations Map</field>
             <field name="tag">station_map_tag</field>
