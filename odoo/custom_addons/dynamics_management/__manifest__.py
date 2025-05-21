@@ -9,8 +9,8 @@
     'data': [
         'security/ir.model.access.csv',
         'views/ride_views.xml',
-        'views/ride_map_action.xml',
         'views/menu.xml',
+        'views/ride_map_action.xml',
     ],
     'assets': {
         'web.assets_backend': [
@@ -19,6 +19,8 @@
             'dynamics_management/static/src/css/ride_map.css',
             'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
             'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+            'dynamics_management/static/src/js/auto_sync.js',
+            'dynamics_management/static/src/xml/auto_sync_templates.xml',  # Added
         ],
     },
     'installable': True,

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Inherit the Apps tree view -->
+    <record id="module_view_tree_inherit" model="ir.ui.view">
+        <field name="name">ir.module.module.tree.inherit</field>
+        <field name="model">ir.module.module</field>
+        <field name="inherit_id" ref="base.module_tree"/>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <!-- Optional: Add other fields or modifications if needed -->
+            </tree>
+        </field>
+    </record>
+
+    <!-- Update the Apps action to filter apps -->
+    <record id="base.open_module_tree" model="ir.actions.act_window">
+        <field name="domain">[('category_id.name', 'in', ['Tools', 'Custom']), ('name', 'not like', 'theme_%')]</field>
+        <field name="context">{'search_default_app': 1}</field>
+    </record>
+</odoo>

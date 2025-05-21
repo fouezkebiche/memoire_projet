@@ -33,27 +33,28 @@ class RideMapComponent extends Component {
             if (this.map) {
                 this.map.remove();
                 this.map = null;
+                console.log("Map removed on unmount.");
             }
         });
     }
 
     async loadRideData() {
         try {
-            console.log("Attempting RPC call to /web/dataset/call_kw/dynamics.ride/get_ongoing_rides");
+            console.log("Attempting RPC call to /web/dataset/call_kw/dynamics.ride/get_ride_map_data");
             const response = await this.env.services.rpc(
-                "/web/dataset/call_kw/dynamics.ride/get_ongoing_rides",
+                "/web/dataset/call_kw/dynamics.ride/get_ride_map_data",
                 {
                     model: "dynamics.ride",
-                    method: "get_ongoing_rides",
+                    method: "get_ride_map_data",
                     args: [],
                     kwargs: {},
                 }
             );
             this.rides = response || [];
-            console.log("Loaded ONGOING rides:", JSON.stringify(this.rides, null, 2));
+            console.log("Loaded rides:", JSON.stringify(this.rides, null, 2));
         } catch (error) {
             console.error("Error loading rides:", JSON.stringify(error, null, 2));
-            this.env.services.notification.add("Failed to fetch ongoing rides: " + (error.message || "Unknown error"), {
+            this.env.services.notification.add("Failed to fetch ride data: " + (error.message || "Unknown error"), {
                 type: "danger",
                 title: "Error",
             });
@@ -87,7 +88,7 @@ class RideMapComponent extends Component {
             this.map.fitBounds(bounds, { padding: [50, 50] });
         } else {
             console.warn("No valid ride coordinates found.");
-            this.env.services.notification.add("No ongoing rides with valid coordinates found.", {
+            this.env.services.notification.add("No rides with valid coordinates found.", {
                 type: "warning",
                 title: "No Rides",
             });
@@ -101,13 +102,29 @@ class RideMapComponent extends Component {
                 return;
             }
 
-            const popupContent = `
+            const popupContent = document.createElement('div');
+            popupContent.innerHTML = `
                 <b>Ride ID:</b> ${ride.external_id || "Unknown"}<br>
                 <b>Direction:</b> ${ride.direction || "Unknown"}<br>
                 <b>Line:</b> ${ride.line_name || "Unknown"}<br>
                 <b>Vehicle:</b> ${ride.vehicle_plate || "Unknown"}<br>
-                <b>Coordinates:</b> (${ride.lat}, ${ride.lng})
+                <b>Coordinates:</b> (${ride.lat}, ${ride.lng})<br>
+                <div style="margin-top: 10px;">
+                    <button class="btn btn-primary btn-sm o_edit_ride_button">Edit</button>
+                </div>
             `;
+
+            // Add click event listener for the Edit button
+            popupContent.querySelector('.o_edit_ride_button').addEventListener('click', () => {
+                this.env.services.action.doAction({
+                    type: 'ir.actions.act_window',
+                    res_model: 'dynamics.ride',
+                    res_id: ride.id,
+                    views: [[false, 'form']],
+                    target: 'current',
+                    context: this.env.context || {},
+                });
+            });
 
             L.marker([ride.lat, ride.lng])
                 .addTo(this.map)

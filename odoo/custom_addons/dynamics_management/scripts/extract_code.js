@@ -4,7 +4,7 @@ const path = require('path');
 // Go up one level to the main module directory
 const sourceFolder = path.resolve(__dirname, '..');
 const outputFile = path.join(__dirname, 'odoo_code_output.txt');
-const extensions = ['.py', '.xml', '.csv']; // File types in your Odoo module
+const extensions = ['.py', '.xml', '.csv','.js','.css']; // File types in your Odoo module
 
 function concatenateFiles(folderPath, depth = 0) {
   const files = fs.readdirSync(folderPath);

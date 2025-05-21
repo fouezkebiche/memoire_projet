@@ -9,7 +9,8 @@
                 <form string="Manual Sync">
                     <sheet>
                         <group>
-                            <p>Click the button below to manually synchronize Stations, Lines, and Line Stations from the external API.</p>
+                            <p>Select the data to synchronize from the external API.</p>
+                            <field name="sync_type" widget="selection" required="1"/>
                         </group>
                         <footer>
                             <button name="action_manual_sync" type="object" string="Sync Now" class="btn-primary"/>

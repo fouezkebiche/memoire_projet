@@ -75,6 +75,17 @@ class LineStationMapComponent extends Component {
         console.log("Loaded stations:", this.stations);
     }
 
+    openLineStationForm(lineStationId) {
+        this.env.services.action.doAction({
+            type: 'ir.actions.act_window',
+            res_model: 'infrastructure.line.station',
+            res_id: lineStationId,
+            views: [[false, 'form']],
+            view_mode: 'form',
+            target: 'current',
+        });
+    }
+
     renderMap() {
         if (!this.mapContainer.el || !window.L) {
             console.error("Map container not found or Leaflet not loaded!");
@@ -89,40 +100,31 @@ class LineStationMapComponent extends Component {
             maxZoom: 19,
         }).addTo(this.map);
 
+        // Add legend control
+        const legend = L.control({ position: 'topright' });
+        legend.onAdd = () => {
+            const div = L.DomUtil.create('div', 'info legend');
+            div.style.backgroundColor = 'white';
+            div.style.padding = '10px';
+            div.style.border = '1px solid #ccc';
+            div.style.borderRadius = '5px';
+            div.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
+            div.style.fontFamily = 'Arial, sans-serif';
+            div.style.fontSize = '12px';
+            div.innerHTML = `
+                <div style="margin-bottom: 6px;">
+                    <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: #00FF00; margin-right: 6px;"></span>GOING
+                </div>
+                <div>
+                    <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: #FF0000; margin-right: 6px;"></span>RETURNING
+                </div>
+            `;
+            return div;
+        };
+        legend.addTo(this.map);
+
         const bounds = [];
-        // Group line stations by line_id and direction for polylines
-        const lineGroups = {};
-        this.lineStations.forEach(ls => {
-            const key = `${ls.line_id[0]}_${ls.direction}`;
-            if (!lineGroups[key]) {
-                lineGroups[key] = [];
-            }
-            lineGroups[key].push(ls);
-        });
-
-        // Sort each group by order and draw polylines
-        Object.keys(lineGroups).forEach(key => {
-            const group = lineGroups[key].sort((a, b) => a.order - b.order);
-            const coordinates = [];
-            group.forEach(ls => {
-                const station = this.stations.find(s => s.id === ls.station_id[0]);
-                if (station && station.latitude && station.longitude) {
-                    coordinates.push([station.latitude, station.longitude]);
-                }
-            });
-
-            if (coordinates.length > 1) {
-                const line = this.lines.find(l => l.id === group[0].line_id[0]);
-                const polylineColor = group[0].direction === 'GOING' ? '#00FF00' : '#FF0000'; // Green for Going, Red for Returning
-                L.polyline(coordinates, {
-                    color: polylineColor,
-                    weight: 5,
-                    opacity: 0.7,
-                }).addTo(this.map).bindPopup(`<b>Line:</b> ${line ? line.enterprise_code : 'Unknown'}<br><b>Direction:</b> ${group[0].direction}`);
-            }
-        });
-
-        // Add markers for line stations
+        // Add markers for line stations without polylines
         this.lineStations.forEach(ls => {
             const station = this.stations.find(s => s.id === ls.station_id[0]);
             const line = this.lines.find(l => l.id === ls.line_id[0]);
@@ -153,12 +155,25 @@ class LineStationMapComponent extends Component {
                         <p style="margin: 5px 0;"><b>Order:</b> ${ls.order}</p>
                         <p style="margin: 5px 0;"><b>Coordinates:</b> (${station.latitude.toFixed(4)}, ${station.longitude.toFixed(4)})</p>
                         <p style="margin: 5px 0;"><b>External ID:</b> ${ls.external_id || 'N/A'}</p>
+                        <div style="margin-top: 10px;">
+                            <button class="btn btn-primary btn-sm line-station-edit-btn" 
+                                    data-line-station-id="${ls.id}">Edit</button>
+                        </div>
                     </div>
                 `;
 
                 marker.bindPopup(popupContent, {
                     maxWidth: 300,
                     minWidth: 200,
+                });
+
+                marker.on('popupopen', () => {
+                    const editButton = document.querySelector(`.line-station-edit-btn[data-line-station-id="${ls.id}"]`);
+                    if (editButton) {
+                        editButton.addEventListener('click', () => {
+                            this.openLineStationForm(ls.id);
+                        });
+                    }
                 });
 
                 // Add marker directly to the map (no clustering)

@@ -42,6 +42,17 @@ class StationMapComponent extends Component {
         console.log("Loaded stations:", this.stations);
     }
 
+    openStationForm(stationId) {
+        this.env.services.action.doAction({
+            type: 'ir.actions.act_window',
+            res_model: 'infrastructure.station',
+            res_id: stationId,
+            views: [[false, 'form']],
+            view_mode: 'form',
+            target: 'current',
+        });
+    }
+
     renderMap() {
         if (!this.mapContainer.el || !window.L) {
             console.error("Map container not found or Leaflet not loaded!");
@@ -100,11 +111,27 @@ class StationMapComponent extends Component {
                     popupContent += `<p style="margin: 5px 0;"><b>Lines:</b> None</p>`;
                 }
 
-                popupContent += `</div>`;
+                popupContent += `
+                        <div style="margin-top: 10px;">
+                            <button class="btn btn-primary btn-sm station-edit-btn" 
+                                    data-station-id="${station.id}">Edit</button>
+                        </div>
+                    </div>
+                `;
 
                 marker.bindPopup(popupContent, {
                     maxWidth: 300,
                     minWidth: 200,
+                });
+
+                // Bind click event to the marker's popup content after it's opened
+                marker.on('popupopen', () => {
+                    const editButton = document.querySelector(`.station-edit-btn[data-station-id="${station.id}"]`);
+                    if (editButton) {
+                        editButton.addEventListener('click', () => {
+                            this.openStationForm(station.id);
+                        });
+                    }
                 });
 
                 markerClusterGroup.addLayer(marker);

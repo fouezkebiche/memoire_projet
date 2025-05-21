@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_infrastructure_sync_wizard_form" model="ir.ui.view">
+        <field name="name">infrastructure.sync.wizard.form</field>
+        <field name="model">infrastructure.sync.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Sync Infrastructure">
+                <p class="text-muted">
+                    Select which infrastructure elements you want to synchronize from the API.
+                </p>
+                <group>
+                    <field name="sync_stations"/>
+                    <field name="sync_lines"/>
+                    <field name="sync_line_stations"/>
+                </group>
+                <footer>
+                    <button string="Sync" name="action_sync" type="object" class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_infrastructure_sync_wizard" model="ir.actions.act_window">
+        <field name="name">Sync Infrastructure</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">infrastructure.sync.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <!-- Menu item -->
+    <menuitem id="menu_infrastructure_sync"
+              name="Sync Infrastructure"
+              parent="menu_infrastructure_management"
+              action="action_infrastructure_sync_wizard"
+              sequence="20"/>
+</odoo> 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-    <record id="action_ride_map" model="ir.actions.client">
+    <record id="dynamics_management.action_ride_map" model="ir.actions.client">
         <field name="name">Ride Map</field>
         <field name="tag">ride_map_tag</field>
     </record>

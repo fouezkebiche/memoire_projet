@@ -1,28 +1,34 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <!-- Root Menu -->
-    <menuitem id="menu_dynamics_root"
+    <menuitem id="dynamics_management.menu_dynamics_root"
               name="Dynamics"
               sequence="11"/>
 
-    <!-- Rides Menu -->
-    <menuitem id="menu_dynamics_ride"
+    <!-- Rides Dropdown Menu -->
+    <menuitem id="dynamics_management.menu_dynamics_rides"
               name="Rides"
-              parent="menu_dynamics_root"
-              action="action_dynamics_ride"
+              parent="dynamics_management.menu_dynamics_root"
               sequence="10"/>
 
-    <!-- Sync Rides Menu -->
-    <menuitem id="menu_sync_rides"
-              name="Sync Rides"
-              parent="menu_dynamics_root"
-              action="action_sync_rides"
-              sequence="11"/>
+    <!-- Rides List (Tree/Form View) -->
+    <menuitem id="dynamics_management.menu_dynamics_ride_list"
+              name="Rides List"
+              parent="dynamics_management.menu_dynamics_rides"
+              action="dynamics_management.action_dynamics_ride"
+              sequence="10"/>
 
-    <!-- Ride Map Menu -->
-    <menuitem id="menu_ride_map"
-              name="Ride Map"
-              parent="menu_dynamics_root"
-              action="action_ride_map"
-              sequence="12"/>
+    <!-- Rides Map -->
+    <menuitem id="dynamics_management.menu_dynamics_ride_map"
+              name="Rides Map"
+              parent="dynamics_management.menu_dynamics_rides"
+              action="dynamics_management.action_ride_map"
+              sequence="20"/>
+
+    <!-- Synchronize Rides -->
+    <menuitem id="dynamics_management.menu_sync_rides"
+              name="Synchronize Rides"
+              parent="dynamics_management.menu_dynamics_root"
+              action="dynamics_management.action_sync_rides"
+              sequence="30"/>
 </odoo>

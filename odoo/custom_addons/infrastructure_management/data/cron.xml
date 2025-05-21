@@ -1,46 +1,41 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <data noupdate="0">
-        <!-- Sync Stations Cron -->
+    <data noupdate="1">
+        <!-- Station Sync -->
         <record id="cron_sync_stations" model="ir.cron">
             <field name="name">Sync Infrastructure Stations</field>
-            <field name="model_id" ref="infrastructure_management.model_infrastructure_station"/>
+            <field name="model_id" ref="model_infrastructure_station"/>
             <field name="state">code</field>
-            <field name="code">model.sync_stations_from_api()</field>
+            <field name="code">model.sync_infrastructure(sync_stations=True)</field>
             <field name="interval_number">5</field>
             <field name="interval_type">minutes</field>
-            <field name="numbercall">-1</field>
             <field name="active" eval="True"/>
-            <field name="doall">True</field>
-            <field name="priority">10</field>
+            <field name="nextcall" eval="(DateTime.now() + timedelta(minutes=1)).strftime('%Y-%m-%d %H:%M:%S')"/>
         </record>
 
-        <!-- Sync Lines Cron -->
+        <!-- Line Sync -->
         <record id="cron_sync_lines" model="ir.cron">
             <field name="name">Sync Infrastructure Lines</field>
-            <field name="model_id" ref="infrastructure_management.model_infrastructure_line"/>
+            <field name="model_id" ref="model_infrastructure_station"/>
             <field name="state">code</field>
-            <field name="code">model.sync_lines_from_api()</field>
+            <field name="code">model.sync_infrastructure(sync_lines=True)</field>
             <field name="interval_number">5</field>
             <field name="interval_type">minutes</field>
             <field name="numbercall">-1</field>
             <field name="active" eval="True"/>
-            <field name="doall">True</field>
-            <field name="priority">20</field>
+            <field name="nextcall" eval="(DateTime.now() + timedelta(minutes=1, seconds=10)).strftime('%Y-%m-%d %H:%M:%S')"/>
         </record>
 
-        <!-- Sync Line Stations Cron -->
+        <!-- Line Station Sync -->
         <record id="cron_sync_line_stations" model="ir.cron">
             <field name="name">Sync Infrastructure Line Stations</field>
-            <field name="model_id" ref="infrastructure_management.model_infrastructure_line_station"/>
+            <field name="model_id" ref="model_infrastructure_station"/>
             <field name="state">code</field>
-            <field name="code">model.sync_linestations_from_api()</field>
+            <field name="code">model.sync_infrastructure(sync_line_stations=True)</field>
             <field name="interval_number">5</field>
             <field name="interval_type">minutes</field>
-            <field name="numbercall">-1</field>
             <field name="active" eval="True"/>
-            <field name="doall">True</field>
-            <field name="priority">30</field>
+            <field name="nextcall" eval="(DateTime.now() + timedelta(minutes=1, seconds=20)).strftime('%Y-%m-%d %H:%M:%S')"/>
         </record>
     </data>
 </odoo>
