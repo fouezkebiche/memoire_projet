@@ -5,6 +5,9 @@
         <field name="model">dynamics.ride</field>
         <field name="arch" type="xml">
             <tree string="Rides">
+                <control>
+                    <button name="sync_rides_from_api" string="Manual Sync" type="object" class="btn-primary" context="{'reload_view': True}"/>
+                </control>
                 <field name="external_id"/>
                 <field name="direction"/>
                 <field name="departure_datetime"/>
@@ -47,11 +50,31 @@
         </field>
     </record>
 
+    <record id="view_dynamics_ride_search" model="ir.ui.view">
+        <field name="name">dynamics.ride.search</field>
+        <field name="model">dynamics.ride</field>
+        <field name="arch" type="xml">
+            <search string="Search Rides">
+                <field name="external_id"/>
+                <field name="direction"/>
+                <field name="line_id"/>
+                <field name="driver"/>
+                <field name="vehicle"/>
+            </search>
+        </field>
+    </record>
+
     <record id="action_dynamics_ride" model="ir.actions.act_window">
         <field name="name">Rides List</field>
         <field name="res_model">dynamics.ride</field>
         <field name="view_mode">tree,form</field>
-        <field name="context">{'additional_actions': [{'type': 'ir.actions.client', 'tag': 'dynamics_auto_sync'}]}</field>
+        <field name="view_id" ref="view_dynamics_ride_tree"/>
+        <field name="context">{'auto_sync': True}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No rides found
+            </p>
+        </field>
     </record>
 
     <record id="action_sync_rides" model="ir.actions.server">

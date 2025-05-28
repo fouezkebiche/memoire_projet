@@ -13,7 +13,6 @@
                     <field name="order"/>
                     <field name="stop_duration"/>
                     <field name="direction"/>
-                    <field name="radius"/>
                     <field name="lat"/>
                     <field name="lng"/>
                     <field name="line_id" widget="many2one"/>
@@ -38,7 +37,6 @@
                                 <field name="order" required="1"/>
                                 <field name="stop_duration"/>
                                 <field name="direction" required="1"/>
-                                <field name="radius"/>
                                 <field name="location_picker" widget="line_station_location_picker"/>
                                 <field name="lat"/>
                                 <field name="lng"/>

@@ -11,7 +11,7 @@
               parent="dynamics_management.menu_dynamics_root"
               sequence="10"/>
 
-    <!-- Rides List (Tree/Form View) -->
+    <!-- Rides List (Tree/Form View) with Auto Sync -->
     <menuitem id="dynamics_management.menu_dynamics_ride_list"
               name="Rides List"
               parent="dynamics_management.menu_dynamics_rides"

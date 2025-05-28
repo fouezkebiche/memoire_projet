@@ -1,8 +1,15 @@
 {
     'name': 'Dynamics Management',
     'version': '1.0',
-    'summary': 'Manage rides and their positions',
-    'description': 'A module to manage rides, their positions, and integrate with the Dynamics API.',
+    'summary': 'Manage rides, positions, and vehicles with API integration',
+    'description': """
+        A module to manage rides, their positions, and vehicles in the Dynamics system.
+        Features:
+        - Synchronize rides with an external API.
+        - Display ongoing rides on an interactive map.
+        - Manage vehicle and position data.
+        - Automatic and manual sync for rides list view.
+    """,
     'category': 'Tools',
     'author': 'Your Name',
     'depends': ['base', 'web', 'infrastructure_management'],
@@ -15,12 +22,12 @@
     'assets': {
         'web.assets_backend': [
             'dynamics_management/static/src/js/ride_map.js',
+            'dynamics_management/static/src/js/ride_list_logger.js',
             'dynamics_management/static/src/xml/ride_map_templates.xml',
+            'dynamics_management/static/src/xml/ride_list_templates.xml',
             'dynamics_management/static/src/css/ride_map.css',
             'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
             'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-            'dynamics_management/static/src/js/auto_sync.js',
-            'dynamics_management/static/src/xml/auto_sync_templates.xml',  # Added
         ],
     },
     'installable': True,

@@ -1,3 +1,5 @@
+/* C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_addons\dynamics_management\static\src\css\ride_map.css */
+/* Styles for the Ride Map view */
 .o_ride_map_container {
     height: 100%;
     width: 100%;
@@ -9,11 +11,13 @@
     z-index: 1;
 }
 
+/* Ensure full-screen map display */
 .o_action .o_content {
     padding: 0 !important;
     height: 100vh;
 }
 
+/* Adjust z-index for Leaflet controls */
 .leaflet-control {
     z-index: 1000;
 }
