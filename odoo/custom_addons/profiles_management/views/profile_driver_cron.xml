@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Scheduled Action for Driver Sync -->
+    <record id="cron_sync_drivers" model="ir.cron">
+        <field name="name">Sync Driver Profiles</field>
+        <field name="model_id" ref="profiles_management.model_profile_driver"/>
+        <field name="state">code</field>
+        <field name="code">model.sync_drivers()</field>
+        <field name="interval_number">5</field>
+        <field name="interval_type">minutes</field>
+        <field name="numbercall">-1</field>
+        <field name="doall">True</field>
+        <field name="active">True</field>
+    </record>
+</odoo>

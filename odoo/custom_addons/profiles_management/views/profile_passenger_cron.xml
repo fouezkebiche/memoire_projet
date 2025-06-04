@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Scheduled Action for Passenger Sync -->
+    <record id="cron_sync_passengers" model="ir.cron">
+        <field name="name">Sync Passenger Profiles</field>
+        <field name="model_id" ref="model_profile_passenger"/>
+        <field name="state">code</field>
+        <field name="code">model.sync_passengers()</field>
+        <field name="interval_number">5</field>
+        <field name="interval_type">minutes</field>
+        <field name="numbercall">-1</field>
+        <field name="doall">True</field>
+        <field name="active">True</field>
+    </record>
+</odoo>

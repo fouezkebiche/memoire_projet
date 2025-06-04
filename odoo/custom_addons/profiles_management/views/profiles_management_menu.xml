@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Top Menu -->
+    <menuitem id="menu_profiles_management_root" name="Profiles Management" sequence="10"/>
+
+    <!-- Passengers Menu -->
+    <menuitem id="menu_passengers" name="Passengers" parent="menu_profiles_management_root" action="action_passenger_list" sequence="10"/>
+
+    <!-- Drivers Menu -->
+    <menuitem id="menu_drivers" name="Drivers" parent="menu_profiles_management_root" action="action_driver_list" sequence="20"/>
+</odoo>

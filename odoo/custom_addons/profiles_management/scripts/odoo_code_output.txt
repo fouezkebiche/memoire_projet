@@ -1,0 +1,1512 @@
+
+
+
+
+
+
+
+
+// [Folder] controllers
+
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\controllers\main.py
+from odoo import http
+from odoo.http import request
+import logging
+from odoo.exceptions import UserError
+
+_logger = logging.getLogger(__name__)
+
+class ProfileManagementController(http.Controller):
+
+    @http.route('/profiles/passengers', type='http', auth='user', methods=['GET'], website=True)
+    def passenger_list(self, **kwargs):
+        try:
+            passengers = request.env['profile.passenger'].search([])
+            if not passengers:
+                _logger.info("No passenger data found, fetching from API")
+                passengers = request.env['profile.passenger'].fetch_passenger_list()
+            return request.render('profiles_management.passenger_list_template', {
+                'passengers': passengers,
+            })
+        except Exception as e:
+            _logger.error("Error fetching passenger list: %s", str(e))
+            return request.render('profiles_management.error_template', {
+                'error': str(e),
+            })
+
+    @http.route('/profiles/passenger/<int:passenger_id>', type='http', auth='user', methods=['GET'], website=True)
+    def passenger_details(self, passenger_id, **kwargs):
+        try:
+            passenger = request.env['profile.passenger'].search([('external_id', '=', passenger_id)], limit=1)
+            if not passenger:
+                _logger.info("Passenger with external_id %s not found, fetching from API", passenger_id)
+                passenger_record_id = request.env['profile.passenger'].fetch_passenger_details(passenger_id)
+                passenger = request.env['profile.passenger'].browse(passenger_record_id)
+            if not passenger.exists():
+                return request.render('profiles_management.error_template', {
+                    'error': 'Passenger not found',
+                })
+            return request.render('profiles_management.passenger_details_template', {
+                'passenger': passenger,
+            })
+        except Exception as e:
+            _logger.error("Error fetching passenger details for ID %s: %s", passenger_id, str(e))
+            return request.render('profiles_management.error_template', {
+                'error': str(e),
+            })
+
+    @http.route('/profiles/drivers', type='http', auth='user', methods=['GET'], website=True)
+    def driver_list(self, **kwargs):
+        try:
+            first_name = kwargs.get('first_name')
+            last_name = kwargs.get('last_name')
+            if first_name or last_name:
+                _logger.info("Filtering drivers with first_name: %s, last_name: %s", first_name, last_name)
+                drivers = request.env['profile.driver'].fetch_filtered_drivers(first_name, last_name)
+            else:
+                drivers = request.env['profile.driver'].search([])
+                if not drivers:
+                    _logger.info("No drivers found, fetching from API")
+                    drivers = request.env['profile.driver'].fetch_driver_list()
+            return request.render('profiles_management.driver_list_template', {
+                'drivers': drivers,
+                'kwargs': kwargs,  # Pass kwargs to retain form input values
+            })
+        except Exception as e:
+            _logger.error("Error fetching driver list: %s", str(e))
+            return request.render('profiles_management.error_template', {
+                'error': str(e),
+            })
+
+    @http.route('/profiles/drivers/search', type='json', auth='user', methods=['POST'])
+    def driver_search(self, search_term, field='first_name'):
+        try:
+            _logger.info("UI search for term: %s on field: %s", search_term, field)
+            first_name = search_term if field == 'first_name' else None
+            last_name = search_term if field == 'last_name' else None
+            drivers = request.env['profile.driver'].fetch_filtered_drivers(first_name, last_name)
+            return {
+                'records': [{
+                    'id': driver.id,
+                    'external_id': driver.external_id,
+                    'first_name': driver.first_name or '',
+                    'last_name': driver.last_name or '',
+                    'phone_number': driver.phone_number or '',
+                    'driver_number': driver.driver_number or '',
+                    'username': driver.username or '',
+                    'last_sync': driver.last_sync and driver.last_sync.strftime('%Y-%m-%d %H:%M:%S') or ''
+                } for driver in drivers],
+                'length': len(drivers)
+            }
+        except Exception as e:
+            _logger.error("Error in UI search for term %s: %s", search_term, str(e))
+            raise UserError(str(e))
+
+    @http.route('/profiles/driver/<int:driver_id>', type='http', auth='user', methods=['GET'], website=True)
+    def driver_details(self, driver_id, **kwargs):
+        try:
+            driver = request.env['profile.driver'].search([('external_id', '=', driver_id)], limit=1)
+            if not driver:
+                _logger.info("Driver with external_id %s not found, fetching from API", driver_id)
+                driver_record_id = request.env['profile.driver'].fetch_driver_details(driver_id)
+                driver = request.env['profile.driver'].browse(driver_record_id)
+            if not driver.exists():
+                return request.render('profiles_management.error_template', {
+                    'error': 'Driver not found',
+                })
+            return request.render('profiles_management.driver_details_template', {
+                'driver': driver,
+            })
+        except Exception as e:
+            _logger.error("Error fetching driver details for ID %s: %s", driver_id, str(e))
+            return request.render('profiles_management.error_template', {
+                'error': str(e),
+            })
+
+    @http.route('/profiles/driver/new', type='http', auth='user', methods=['GET'], website=True)
+    def driver_create_form(self, **kwargs):
+        return request.render('profiles_management.driver_create_form_template')
+
+    @http.route('/profiles/driver/create', type='http', auth='user', methods=['POST'], website=True)
+    def driver_create_submit(self, **kwargs):
+        try:
+            values = {
+                'first_name': kwargs.get('first_name'),
+                'last_name': kwargs.get('last_name'),
+                'phone_number': kwargs.get('phone_number'),
+                'driver_number': kwargs.get('driver_number'),
+                'rides': kwargs.get('rides', '[]'),
+                'username': kwargs.get('username'),
+                'password': kwargs.get('password'),
+            }
+            required_fields = ['first_name', 'last_name', 'phone_number', 'driver_number', 'username', 'password']
+            missing = [field for field in required_fields if not values[field]]
+            if missing:
+                raise UserError(f"Missing required fields: {', '.join(missing)}")
+            driver = request.env['profile.driver'].create(values)
+            return request.redirect('/profiles/drivers')
+        except Exception as e:
+            _logger.error("Error creating driver: %s", str(e))
+            return request.render('profiles_management.error_template', {
+                'error': str(e),
+            })
+
+    @http.route('/profiles/driver/edit/<int:driver_id>', type='http', auth='user', methods=['GET'], website=True)
+    def driver_edit_form(self, driver_id, **kwargs):
+        try:
+            driver = request.env['profile.driver'].search([('external_id', '=', driver_id)], limit=1)
+            if not driver.exists():
+                return request.render('profiles_management.error_template', {
+                    'error': 'Driver not found',
+                })
+            return request.render('profiles_management.driver_edit_form_template', {
+                'driver': driver,
+            })
+        except Exception as e:
+            _logger.error("Error loading driver edit form for ID %s: %s", driver_id, str(e))
+            return request.render('profiles_management.error_template', {
+                'error': str(e),
+            })
+
+    @http.route('/profiles/driver/edit/<int:driver_id>', type='http', auth='user', methods=['POST'], website=True)
+    def driver_edit_submit(self, driver_id, **kwargs):
+        try:
+            driver = request.env['profile.driver'].search([('external_id', '=', driver_id)], limit=1)
+            if not driver.exists():
+                raise UserError("Driver not found")
+            values = {
+                'first_name': kwargs.get('first_name'),
+                'last_name': kwargs.get('last_name'),
+                'phone_number': kwargs.get('phone_number'),
+                'driver_number': kwargs.get('driver_number'),
+                'rides': kwargs.get('rides', '[]'),
+                'username': kwargs.get('username'),
+            }
+            if kwargs.get('password'):
+                values['password'] = kwargs.get('password')
+            required_fields = ['first_name', 'last_name', 'phone_number', 'driver_number', 'username']
+            missing = [field for field in required_fields if not values[field]]
+            if missing:
+                raise UserError(f"Missing required fields: {', '.join(missing)}")
+            existing = request.env['profile.driver'].search([
+                ('phone_number', '=', values['phone_number']),
+                ('username', '=', values['username']),
+                ('id', '!=', driver.id),
+            ], limit=1)
+            if existing:
+                raise UserError(f"Driver with phone number {values['phone_number']} and username {values['username']} already exists (external ID: {existing.external_id}).")
+            _logger.info("Submitting driver update for external_id %s with values: %s", driver_id, values)
+            request.env['profile.driver'].update_driver(driver.id, values)
+            return request.redirect('/profiles/drivers')
+        except Exception as e:
+            _logger.error("Error updating driver for ID %s: %s", driver_id, str(e))
+            return request.render('profiles_management.error_template', {
+                'error': str(e),
+            })
+
+    @http.route('/profiles/driver/delete/<int:driver_id>', type='http', auth='user', methods=['GET'], website=True)
+    def driver_delete(self, driver_id, **kwargs):
+        try:
+            driver = request.env['profile.driver'].search([('external_id', '=', driver_id)], limit=1)
+            if not driver.exists():
+                return request.render('profiles_management.error_template', {
+                    'error': 'Driver not found',
+                })
+            driver.unlink()
+            return request.redirect('/profiles/drivers')
+        except Exception as e:
+            _logger.error("Error deleting driver for ID %s: %s", driver_id, str(e))
+            return request.render('profiles_management.error_template', {
+                'error': str(e),
+            })
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\controllers\__init__.py
+from . import main
+
+
+
+
+
+
+
+
+
+// [Folder] models
+
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\models\profile_driver.py
+from odoo import models, fields, api
+import requests
+import logging
+from odoo.exceptions import UserError
+import time
+
+_logger = logging.getLogger(__name__)
+
+class ProfileDriver(models.Model):
+    _name = 'profile.driver'
+    _description = 'Driver Profile'
+    _rec_name = 'driver_number'
+    _sql_constraints = [
+        ('external_id_unique', 'UNIQUE(external_id)', 'External ID must be unique.'),
+    ]
+
+    external_id = fields.Integer(string='External ID', required=True, index=True)
+    first_name = fields.Char(string='First Name', required=True)
+    last_name = fields.Char(string='Last Name', required=True)
+    phone_number = fields.Char(string='Phone Number', required=True)
+    driver_number = fields.Char(string='Driver Number', required=True)
+    rides = fields.Char(string='Rides')  # Stored as JSON string
+    username = fields.Char(string='Username', required=True)
+    password = fields.Char(string='Password', required=True)
+    last_sync = fields.Datetime(string='Last Synced', readonly=True)
+
+    @api.model
+    def create(self, values):
+        """Override create to ensure external_id is set via API."""
+        if 'external_id' not in values or not values['external_id']:
+            # Check if a driver with the same phone_number and username exists
+            existing = self.search([
+                ('phone_number', '=', values.get('phone_number')),
+                ('username', '=', values.get('username'))
+            ], limit=1)
+            if existing:
+                raise UserError(f"Driver with phone number {values.get('phone_number')} and username {values.get('username')} already exists (external ID: {existing.external_id}).")
+            external_id = self._create_driver_via_api(values)
+            values['external_id'] = external_id
+        # Double-check external_id uniqueness
+        if self.search([('external_id', '=', values['external_id'])], limit=1):
+            raise UserError(f"Driver with external ID {values['external_id']} already exists in Odoo.")
+        return super(ProfileDriver, self).create(values)
+
+    @api.model
+    def fetch_driver_list(self):
+        """Fetch and return the list of drivers from the API."""
+        api_url = 'http://147.93.52.105:9082/api/v1/profile/driver'
+        try:
+            _logger.info("Fetching driver list from API: %s", api_url)
+            response = requests.get(api_url, headers={'Content-Type': 'application/json'}, timeout=10)
+            _logger.info("API GET %s response: %s status: %s", api_url, response.text, response.status_code)
+            
+            if response.status_code != 200:
+                _logger.error("Failed to fetch driver list: %s status: %s", response.text, response.status_code)
+                raise UserError(f"Failed to fetch driver list: {response.text} status: {response.status_code}")
+            
+            drivers = response.json()
+            if not isinstance(drivers, list):
+                _logger.error("Invalid API response format: Expected list, got %s", type(drivers).__name__)
+                raise UserError(f"Invalid API response format: Expected list, got {type(drivers).__name__}")
+
+            driver_ids = []
+            sync_time = fields.Datetime.now()
+            for driver in drivers:
+                external_id = driver.get('id', 0)
+                if not external_id:
+                    _logger.warning("Skipping driver with missing id: %s", driver)
+                    continue
+                
+                driver_data = {
+                    'external_id': external_id,
+                    'first_name': driver.get('firstName'),
+                    'last_name': driver.get('lastName'),
+                    'phone_number': driver.get('phoneNumber', ''),
+                    'driver_number': driver.get('driverNumber', ''),
+                    'rides': str(driver.get('rides', [])),
+                    'username': driver.get('username', ''),
+                    'password': driver.get('password', ''),
+                    'last_sync': sync_time,
+                }
+                
+                existing = self.search([('external_id', '=', external_id)], limit=1)
+                if existing:
+                    existing.write(driver_data)
+                    driver_ids.append(existing.id)
+                    _logger.debug("Updated driver with external_id: %s", external_id)
+                else:
+                    new_record = self.create(driver_data)
+                    driver_ids.append(new_record.id)
+                    _logger.debug("Created new driver with external_id: %s", external_id)
+
+            _logger.info("Synced %s driver records", len(driver_ids))
+            return self.browse(driver_ids)
+        except requests.RequestException as e:
+            _logger.error("API request failed for driver list: %s", str(e))
+            raise UserError(f"API request failed: {str(e)}")
+        except ValueError as e:
+            _logger.error("Failed to parse API response: %s", str(e))
+            raise UserError(f"Invalid API response: {str(e)}")
+
+    @api.model
+    def fetch_filtered_drivers(self, first_name=None, last_name=None):
+        """Fetch drivers from API filtered by first_name or last_name, with local fallback."""
+        api_url = 'http://147.93.52.105:9082/api/v1/profile/driver/filter'
+        params = {}
+        if first_name:
+            params['first_name'] = first_name.strip()
+            params['firstName'] = first_name.strip()  # Try camelCase for API compatibility
+        if last_name:
+            params['last_name'] = last_name.strip()
+            params['lastName'] = last_name.strip()  # Try camelCase for API compatibility
+        
+        try:
+            _logger.info("Fetching filtered drivers from API: %s with params: %s", api_url, params)
+            response = requests.get(api_url, headers={'Content-Type': 'application/json'}, params=params, timeout=10)
+            _logger.info("API GET %s response: %s status: %s", api_url, response.text, response.status_code)
+            
+            if response.status_code != 200:
+                _logger.error("Failed to fetch filtered drivers: %s status: %s", response.text, response.status_code)
+                raise UserError(f"Failed to fetch filtered drivers: {response.text} status: {response.status_code}")
+            
+            drivers = response.json()
+            if not isinstance(drivers, list):
+                _logger.error("Invalid API response format: Expected list, got %s", type(drivers).__name__)
+                raise UserError(f"Invalid API response format: Expected list, got {type(drivers).__name__}")
+
+            driver_ids = []
+            sync_time = fields.Datetime.now()
+            for driver in drivers:
+                external_id = driver.get('id', 0)
+                if not external_id:
+                    _logger.warning("Skipping driver with missing id: %s", driver)
+                    continue
+                
+                driver_data = {
+                    'external_id': external_id,
+                    'first_name': driver.get('firstName'),
+                    'last_name': driver.get('lastName'),
+                    'phone_number': driver.get('phoneNumber', ''),
+                    'driver_number': driver.get('driverNumber', ''),
+                    'rides': str(driver.get('rides', [])),
+                    'username': driver.get('username', ''),
+                    'password': driver.get('password', ''),
+                    'last_sync': sync_time,
+                }
+                
+                existing = self.search([('external_id', '=', external_id)], limit=1)
+                if existing:
+                    existing.write(driver_data)
+                    driver_ids.append(existing.id)
+                    _logger.debug("Updated driver with external_id: %s", external_id)
+                else:
+                    new_record = self.create(driver_data)
+                    driver_ids.append(new_record.id)
+                    _logger.debug("Created new driver with external_id: %s", external_id)
+
+            # Verify if API filtered correctly
+            filtered_drivers = self.browse(driver_ids)
+            if first_name or last_name:
+                valid_results = True
+                for driver in filtered_drivers:
+                    if first_name and not (first_name.lower() in (driver.first_name or '').lower()):
+                        valid_results = False
+                        _logger.warning("API returned driver %s with first_name %s, does not match filter %s",
+                                        driver.external_id, driver.first_name, first_name)
+                    if last_name and not (last_name.lower() in (driver.last_name or '').lower()):
+                        valid_results = False
+                        _logger.warning("API returned driver %s with last_name %s, does not match filter %s",
+                                        driver.external_id, driver.last_name, last_name)
+                
+                if not valid_results:
+                    _logger.info("API filter returned incorrect results, falling back to local filtering")
+                    domain = []
+                    if first_name:
+                        domain.append(('first_name', 'ilike', f'%{first_name}%'))
+                    if last_name:
+                        domain.append(('last_name', 'ilike', f'%{last_name}%'))
+                    filtered_drivers = self.search(domain)
+                    driver_ids = filtered_drivers.ids
+                    _logger.info("Local filtering returned %s drivers", len(driver_ids))
+
+            _logger.info("Fetched %s filtered driver records", len(driver_ids))
+            return self.browse(driver_ids)
+        except requests.RequestException as e:
+            _logger.error("API request failed for filtered drivers: %s", str(e))
+            # Fallback to local search if API fails
+            _logger.info("Falling back to local driver search")
+            domain = []
+            if first_name:
+                domain.append(('first_name', 'ilike', f'%{first_name}%'))
+            if last_name:
+                domain.append(('last_name', 'ilike', f'%{last_name}%'))
+            drivers = self.search(domain)
+            _logger.info("Local fallback search returned %s drivers", len(drivers))
+            return drivers
+        except ValueError as e:
+            _logger.error("Failed to parse API response: %s", str(e))
+            raise UserError(f"Invalid API response: {str(e)}")
+
+    @api.model
+    def fetch_driver_details(self, external_id):
+        """Fetch details of a specific driver by ID."""
+        api_url = f'http://147.93.52.105:9082/api/v1/profile/driver/{external_id}'
+        try:
+            _logger.info("Fetching driver details from: %s", api_url)
+            response = requests.get(api_url, headers={'Content-Type': 'application/json'}, timeout=10)
+            _logger.info("API GET %s response: %s status: %s", api_url, response.text, response.status_code)
+            
+            if response.status_code == 404:
+                _logger.warning("Driver not found for external_id: %s", external_id)
+                raise UserError("Driver not found")
+            if response.status_code != 200:
+                _logger.error("Failed to fetch driver details: %s status: %s", response.text, response.status_code)
+                raise UserError(f"Failed to fetch driver details: {response.text} status: {response.status_code}")
+            
+            driver = response.json()
+            if not isinstance(driver, dict):
+                _logger.error("Invalid API response format: Expected dict, got %s", type(driver).__name__)
+                raise UserError(f"Invalid API response format: Expected dict, got {type(driver).__name__}")
+
+            driver_data = {
+                'external_id': driver.get('id', 0),
+                'first_name': driver.get('firstName'),
+                'last_name': driver.get('lastName'),
+                'phone_number': driver.get('phoneNumber', ''),
+                'driver_number': driver.get('driverNumber', ''),
+                'rides': str(driver.get('rides', [])),
+                'username': driver.get('username', ''),
+                'password': driver.get('password', ''),
+                'last_sync': fields.Datetime.now(),
+            }
+
+            existing = self.search([('external_id', '=', driver.get('id', 0))], limit=1)
+            if existing:
+                existing.write(driver_data)
+                driver_id = existing.id
+                _logger.debug("Updated driver with external_id: %s", driver.get('id'))
+            else:
+                driver_record = self.create(driver_data)
+                driver_id = driver_record.id
+                _logger.debug("Created driver with external_id: %s", driver.get('id'))
+
+            _logger.info("Fetched and processed driver record with external_id: %s", driver_id)
+            return driver_id
+        except requests.RequestException as e:
+            _logger.error("API request failed for driver details: %s", str(e))
+            raise UserError(f"API request failed: {str(e)}")
+        except ValueError as e:
+            _logger.error("Failed to parse API response: %s", str(e))
+            raise UserError(f"Invalid API response: {str(e)}")
+
+    @api.model
+    def _create_driver_via_api(self, values):
+        """Create a new driver via API and return external_id."""
+        api_url = 'http://147.93.52.105:9082/api/v1/profile/driver'
+        try:
+            driver_data = {
+                'firstName': values.get('first_name'),
+                'lastName': values.get('last_name'),
+                'phoneNumber': values.get('phone_number'),
+                'driverNumber': values.get('driver_number'),
+                'rides': eval(values.get('rides', '[]')),
+                'username': values.get('username'),
+                'password': values.get('password'),
+            }
+            _logger.info("Creating driver via API: %s with data: %s", api_url, driver_data)
+            headers = {'Content-Type': 'application/json'}
+            response = requests.post(api_url, json=driver_data, headers=headers, timeout=10)
+            _logger.info("API POST %s response: %s status: %s", api_url, response.text, response.status_code)
+
+            if response.status_code != 201:
+                _logger.error("Failed to create driver: %s status: %s", response.text, response.status_code)
+                raise UserError(f"Failed to create driver: {response.text} status: {response.status_code}")
+
+            # Fetch driver list to find the new driver
+            time.sleep(2)  # Increased delay to ensure API sync
+            response = requests.get(api_url, headers={'Content-Type': 'application/json'}, timeout=10)
+            if response.status_code != 200:
+                raise UserError(f"Failed to fetch driver list after creation: {response.text} status: {response.status_code}")
+            drivers = response.json()
+            if not drivers:
+                raise UserError("No drivers found in API after creation")
+
+            # Find matching drivers
+            matching_drivers = [
+                driver for driver in drivers
+                if (driver.get('phoneNumber') == driver_data['phoneNumber'] and
+                    driver.get('username') == driver_data['username'] and
+                    driver.get('firstName') == driver_data['firstName'] and
+                    driver.get('lastName') == driver_data['lastName'] and
+                    driver.get('driverNumber') == driver_data['driverNumber'])
+            ]
+
+            if not matching_drivers:
+                _logger.error("No matching driver found for data: %s", driver_data)
+                raise UserError("Could not identify new driver in API response. Please check API data consistency.")
+
+            # Select the driver with the highest ID
+            new_driver = max(matching_drivers, key=lambda d: d['id'])
+            external_id = new_driver.get('id')
+            _logger.info("Identified new driver with external_id: %s", external_id)
+
+            # Verify external_id doesn't exist in Odoo
+            if self.search([('external_id', '=', external_id)], limit=1):
+                _logger.error("External ID %s already exists in Odoo", external_id)
+                raise UserError(f"Driver with external ID {external_id} already exists in Odoo.")
+
+            return external_id
+
+        except requests.RequestException as e:
+            _logger.error("API request failed for driver creation: %s", str(e))
+            raise UserError(f"API request failed: {str(e)}")
+        except ValueError as e:
+            _logger.error("Failed to parse API response: %s", str(e))
+            raise UserError(f"Invalid API response: {str(e)}")
+
+    @api.model
+    def update_driver(self, driver_id, values):
+        """Update a driver via API."""
+        driver = self.browse(driver_id)
+        if not driver.exists():
+            raise UserError("Driver not found")
+        
+        api_url = f'http://147.93.52.105:9082/api/v1/profile/driver/{driver.external_id}'
+        try:
+            driver_data = {
+                'id': driver.external_id,
+                'firstName': values.get('first_name', driver.first_name) or '',
+                'lastName': values.get('last_name', driver.last_name) or '',
+                'phoneNumber': values.get('phone_number', driver.phone_number) or '',
+                'driverNumber': values.get('driver_number', driver.driver_number) or '',
+                'rides': eval(values.get('rides', driver.rides or '[]')) or [],
+                'username': values.get('username', driver.username) or '',
+                'password': values.get('password', driver.password) or '',
+            }
+            _logger.info("Updating driver via API: %s with data: %s", api_url, driver_data)
+            headers = {'Content-Type': 'application/json'}
+            response = requests.put(api_url, json=driver_data, headers=headers, timeout=10)
+            _logger.info("API PUT %s response: %s status: %s", api_url, response.text, response.status_code)
+
+            if response.status_code not in (200, 201, 204):
+                _logger.error("Failed to update driver: %s status: %s", response.text, response.status_code)
+                raise UserError(f"Failed to update driver: {response.text} status: {response.status_code}")
+
+            # Update local record
+            driver.write({
+                'first_name': driver_data['firstName'],
+                'last_name': driver_data['lastName'],
+                'phone_number': driver_data['phoneNumber'],
+                'driver_number': driver_data['driverNumber'],
+                'rides': str(driver_data['rides']),
+                'username': driver_data['username'],
+                'password': driver_data['password'] if values.get('password') else driver.password,
+                'last_sync': fields.Datetime.now(),
+            })
+            _logger.info("Successfully updated driver with external_id: %s", driver.external_id)
+            return driver.id
+        except requests.RequestException as e:
+            _logger.error("API request failed for driver update: %s", str(e))
+            raise UserError(f"API request failed: {str(e)}")
+        except ValueError as e:
+            _logger.error("Failed to parse API response or rides data: %s", str(e))
+            raise UserError(f"Invalid API response or rides data: {str(e)}")
+
+    def unlink(self):
+        """Override unlink to handle API deletion before local deletion."""
+        if self._context.get('from_sync'):
+            _logger.info("Skipping API delete for driver during sync: %s", self.phone_number)
+            return super(ProfileDriver, self).unlink()
+
+        for record in self:
+            if record.external_id:
+                try:
+                    api_url = f'http://147.93.52.105:9082/api/v1/profile/driver/{record.external_id}'
+                    _logger.info("Sending DELETE request to: %s", api_url)
+                    response = requests.delete(
+                        api_url,
+                        headers={'Content-Type': 'application/json'},
+                        timeout=10
+                    )
+                    _logger.info("API DELETE %s response: %s (Status: %s)", api_url, response.text, response.status_code)
+                    if response.status_code not in (200, 204):
+                        _logger.warning(
+                            "Failed to delete driver %s in API: %s (Status: %s). Proceeding with Odoo deletion.",
+                            record.phone_number or record.id, response.text, response.status_code
+                        )
+                except requests.RequestException as e:
+                    _logger.error("API DELETE request failed for driver %s: %s.", record.phone_number or record.id, str(e))
+            else:
+                _logger.info("Skipping API delete for driver %s: No external_id.", record.phone_number or record.id)
+
+        return super(ProfileDriver, self).unlink()
+
+    @api.model
+    def sync_drivers(self):
+        """Sync driver data from API, used by cron job."""
+        try:
+            _logger.info("Starting driver data sync via cron")
+            sync_start_time = fields.Datetime.now()
+            drivers = self.fetch_driver_list()
+            stale_records = self.search([('last_sync', '<', sync_start_time)])
+            if stale_records:
+                stale_records.unlink()
+                _logger.info("Deleted %s stale driver records", len(stale_records))
+            _logger.info("Driver sync completed successfully")
+            return True
+        except Exception as e:
+            _logger.error("Driver sync failed: %s", str(e))
+            return False
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\models\profile_passenger.py
+from odoo import models, fields, api
+import requests
+import logging
+from odoo.exceptions import UserError
+
+_logger = logging.getLogger(__name__)
+
+class ProfilePassenger(models.Model):
+    _name = 'profile.passenger'
+    _description = 'Passenger Profile'
+    _rec_name = 'phone_number'
+    _sql_constraints = [
+        ('external_id_unique', 'UNIQUE(external_id)', 'External ID must be unique.'),
+    ]
+
+    external_id = fields.Integer(string='External ID', required=True, index=True)
+    first_name = fields.Char(string='First Name')
+    last_name = fields.Char(string='Last Name')
+    phone_number = fields.Char(string='Phone Number', required=True)
+    email = fields.Char(string='Email')
+    rides = fields.Char(string='Rides')  # Stored as JSON string for simplicity
+    favourites = fields.Char(string='Favourites')  # Stored as JSON string
+    last_sync = fields.Datetime(string='Last Synced', readonly=True)
+
+    @api.model
+    def fetch_passenger_list(self):
+        """Fetch and return the list of passengers from the API."""
+        api_url = 'http://147.93.52.105:9082/api/v1/profile/passenger'
+        try:
+            _logger.info("Fetching passenger list from API: %s", api_url)
+            response = requests.get(api_url, headers={'Content-Type': 'application/json'}, timeout=10)
+            _logger.info("API GET %s response: %s (Status: %s)", api_url, response.text, response.status_code)
+            
+            if response.status_code != 200:
+                _logger.error("Failed to fetch passenger list: %s (Status: %s)", response.text, response.status_code)
+                raise UserError(f"Failed to fetch passenger list: {response.text} (Status: {response.status_code})")
+            
+            passengers = response.json()
+            if not isinstance(passengers, list):
+                _logger.error("Invalid API response format: Expected list, got %s", type(passengers).__name__)
+                raise UserError(f"Invalid API response format: Expected list, got {type(passengers).__name__}")
+
+            # Update or create records
+            passenger_ids = []
+            for passenger in passengers:
+                external_id = passenger.get('id', 0)
+                if not external_id:
+                    _logger.warning("Skipping passenger with missing id: %s", passenger)
+                    continue
+                
+                passenger_data = {
+                    'external_id': external_id,
+                    'first_name': passenger.get('firstName'),
+                    'last_name': passenger.get('lastName'),
+                    'phone_number': passenger.get('phoneNumber', ''),
+                    'email': passenger.get('email'),
+                    'rides': str(passenger.get('rides', [])),
+                    'favourites': str(passenger.get('favourites', [])),
+                    'last_sync': fields.Datetime.now(),
+                }
+                
+                existing = self.search([('external_id', '=', external_id)], limit=1)
+                if existing:
+                    existing.write(passenger_data)
+                    passenger_ids.append(existing.id)
+                    _logger.debug("Updated passenger with external_id %s", external_id)
+                else:
+                    new_record = self.create(passenger_data)
+                    passenger_ids.append(new_record.id)
+                    _logger.debug("Created passenger with external_id %s", external_id)
+
+            _logger.info("Synced %s passenger records", len(passenger_ids))
+            return self.browse(passenger_ids)
+        except requests.RequestException as e:
+            _logger.error("API request failed for passenger list: %s", str(e))
+            raise UserError(f"API request failed: {str(e)}")
+        except ValueError as e:
+            _logger.error("Failed to parse API response: %s", str(e))
+            raise UserError(f"Invalid API response: {str(e)}")
+
+    @api.model
+    def fetch_passenger_details(self, external_id):
+        """Fetch details of a specific passenger by ID."""
+        api_url = f'http://147.93.52.105:9082/api/v1/profile/passenger/{external_id}'
+        try:
+            _logger.info("Fetching passenger details from API: %s", api_url)
+            response = requests.get(api_url, headers={'Content-Type': 'application/json'}, timeout=10)
+            _logger.info("API GET %s response: %s (Status: %s)", api_url, response.text, response.status_code)
+            
+            if response.status_code == 404:
+                _logger.warning("Passenger not found for external_id %s", external_id)
+                raise UserError("Passenger not found")
+            if response.status_code != 200:
+                _logger.error("Failed to fetch passenger details: %s (Status: %s)", response.text, response.status_code)
+                raise UserError(f"Failed to fetch passenger details: {response.text} (Status: {response.status_code})")
+            
+            passenger = response.json()
+            if not isinstance(passenger, dict):
+                _logger.error("Invalid API response format: Expected dict, got %s", type(passenger).__name__)
+                raise UserError(f"Invalid API response format: Expected dict, got {type(passenger).__name__}")
+
+            passenger_data = {
+                'external_id': passenger.get('id', 0),
+                'first_name': passenger.get('firstName'),
+                'last_name': passenger.get('lastName'),
+                'phone_number': passenger.get('phoneNumber', ''),
+                'email': passenger.get('email'),
+                'rides': str(passenger.get('rides', [])),
+                'favourites': str(passenger.get('favourites', [])),
+                'last_sync': fields.Datetime.now(),
+            }
+
+            existing = self.search([('external_id', '=', passenger.get('id', 0))], limit=1)
+            if existing:
+                existing.write(passenger_data)
+                passenger_id = existing.id
+                _logger.debug("Updated passenger with external_id %s", passenger.get('id'))
+            else:
+                passenger_record = self.create(passenger_data)
+                passenger_id = passenger_record.id
+                _logger.debug("Created passenger with external_id %s", passenger.get('id'))
+
+            _logger.info("Fetched and processed passenger record with external_id %s", passenger.get('id'))
+            return passenger_id
+        except requests.RequestException as e:
+            _logger.error("API request failed for passenger details: %s", str(e))
+            raise UserError(f"API request failed: {str(e)}")
+        except ValueError as e:
+            _logger.error("Failed to parse API response: %s", str(e))
+            raise UserError(f"Invalid API response: {str(e)}")
+
+    @api.model
+    def sync_passengers(self):
+        """Sync passenger data from API, used by cron job."""
+        try:
+            _logger.info("Starting passenger data sync via cron")
+            passengers = self.fetch_passenger_list()
+            # Delete stale records (older than last sync)
+            stale_records = self.search([('last_sync', '<', fields.Datetime.now())])
+            if stale_records:
+                stale_records.unlink()
+                _logger.info("Deleted %s stale passenger records", len(stale_records))
+            _logger.info("Passenger sync completed successfully")
+            return True
+        except Exception as e:
+            _logger.error("Passenger sync failed: %s", str(e))
+            return False
+
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\models\__init__.py
+from . import profile_passenger
+from . import profile_driver
+
+
+
+
+
+
+
+
+
+// [Folder] scripts
+
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\scripts\extract_code.js
+const fs = require('fs');
+const path = require('path');
+
+// Go up one level to the main module directory
+const sourceFolder = path.resolve(__dirname, '..');
+const outputFile = path.join(__dirname, 'odoo_code_output.txt');
+const extensions = ['.py', '.xml', '.csv','.js','.css']; // File types in your Odoo module
+
+function concatenateFiles(folderPath, depth = 0) {
+  const files = fs.readdirSync(folderPath);
+  let fileContent = '';
+  let folderContent = '';
+
+  files.forEach(file => {
+    const filePath = path.join(folderPath, file);
+    const stats = fs.statSync(filePath);
+
+    if (stats.isDirectory()) {
+      const subContent = concatenateFiles(filePath, depth + 1);
+      if (subContent && subContent.trim()) {
+        folderContent += `\n\n\n\n\n\n\n\n// ${'  '.repeat(depth)}[Folder] ${file}\n${subContent}\n\n`;
+      }
+    } else {
+      for (const ext of extensions) {
+        if (file.endsWith(ext)) {
+          const fileData = fs.readFileSync(filePath, 'utf-8');
+          fileContent += `\n\n\n\n\n\n\n\n// ${filePath}\n${fileData}`;
+          break;
+        }
+      }
+    }
+  });
+
+  return folderContent + fileContent;
+}
+
+// Start with a clean output file
+fs.writeFileSync(outputFile, '', 'utf-8');
+const allContent = concatenateFiles(sourceFolder);
+fs.appendFileSync(outputFile, allContent, 'utf-8');
+
+console.log(`✅ Code extracted to: ${outputFile}`);
+
+
+
+
+
+
+
+
+
+
+// [Folder] security
+
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\security\ir.model.access.csv
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_profile_passenger,profile.passenger.access,model_profile_passenger,,1,0,0,0
+access_profile_driver,profile.driver.access,model_profile_driver,,1,1,1,1
+
+
+
+
+
+
+
+
+
+// [Folder] static
+
+
+
+
+
+
+
+
+//   [Folder] src
+
+
+
+
+
+
+
+
+//     [Folder] js
+
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\static\src\js\driver_search.js
+/** @odoo-module **/
+
+import { registry } from "@web/core/registry";
+import { ListController } from "@web/views/list/list_controller";
+import { patch } from "@web/core/utils/patch";
+
+class DriverSearchController extends ListController {
+    setup() {
+        super.setup();
+        this.modelName = this.props.resModel;
+    }
+
+    async _onSearch(searchQuery) {
+        if (this.modelName !== "profile.driver") {
+            return super._onSearch(searchQuery);
+        }
+
+        const searchValue = searchQuery.terms.join(" ").trim();
+        const field = searchQuery.filters.length ? searchQuery.filters[0].fieldName : "first_name";
+
+        if (!searchValue) {
+            return super._onSearch(searchQuery);
+        }
+
+        try {
+            const result = await this.env.services.rpc({
+                route: "/profiles/drivers/search",
+                params: {
+                    search_term: searchValue,
+                    field: field,
+                },
+            });
+            this.model.load({
+                resIds: result.records.map(record => record.id),
+                limit: result.length,
+                offset: 0,
+            });
+            this.render();
+        } catch (error) {
+            console.error("Search error:", error);
+            return super._onSearch(searchQuery);
+        }
+    }
+}
+
+registry.category("view_controllers").add("driver_search_controller", DriverSearchController);
+
+
+
+
+
+
+
+
+
+
+
+
+
+// [Folder] views
+
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\views\profiles_management_menu.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Top Menu -->
+    <menuitem id="menu_profiles_management_root" name="Profiles Management" sequence="10"/>
+
+    <!-- Passengers Menu -->
+    <menuitem id="menu_passengers" name="Passengers" parent="menu_profiles_management_root" action="action_passenger_list" sequence="10"/>
+
+    <!-- Drivers Menu -->
+    <menuitem id="menu_drivers" name="Drivers" parent="menu_profiles_management_root" action="action_driver_list" sequence="20"/>
+</odoo>
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\views\profile_driver_cron.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Scheduled Action for Driver Sync -->
+    <record id="cron_sync_drivers" model="ir.cron">
+        <field name="name">Sync Driver Profiles</field>
+        <field name="model_id" ref="profiles_management.model_profile_driver"/>
+        <field name="state">code</field>
+        <field name="code">model.sync_drivers()</field>
+        <field name="interval_number">5</field>
+        <field name="interval_type">minutes</field>
+        <field name="numbercall">-1</field>
+        <field name="doall">True</field>
+        <field name="active">True</field>
+    </record>
+</odoo>
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\views\profile_driver_views.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Tree View for Driver List -->
+    <record id="view_driver_tree" model="ir.ui.view">
+        <field name="name">profile.driver.tree</field>
+        <field name="model">profile.driver</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="external_id"/>
+                <field name="first_name"/>
+                <field name="last_name"/>
+                <field name="phone_number"/>
+                <field name="driver_number"/>
+                <field name="username"/>
+                <field name="last_sync"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Search View for Driver List -->
+    <record id="view_driver_search" model="ir.ui.view">
+        <field name="name">profile.driver.search</field>
+        <field name="model">profile.driver</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="first_name"/>
+                <field name="last_name"/>
+                <filter string="First Name" name="filter_first_name" domain="[('first_name', 'ilike', self)]"/>
+                <filter string="Last Name" name="filter_last_name" domain="[('last_name', 'ilike', self)]"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- Form View for Driver Details -->
+    <record id="view_driver_form" model="ir.ui.view">
+        <field name="name">profile.driver.form</field>
+        <field name="model">profile.driver</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="external_id" readonly="1"/>
+                        <field name="first_name"/>
+                        <field name="last_name"/>
+                        <field name="phone_number"/>
+                        <field name="driver_number"/>
+                        <field name="rides"/>
+                        <field name="username"/>
+                        <field name="password" widget="password"/>
+                        <field name="last_sync" readonly="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action for Driver List -->
+    <record id="action_driver_list" model="ir.actions.act_window">
+        <field name="name">Drivers</field>
+        <field name="res_model">profile.driver</field>
+        <field name="view_mode">tree,form</field>
+        <field name="view_id" ref="view_driver_tree"/>
+        <field name="search_view_id" ref="view_driver_search"/>
+    </record>
+
+    <!-- Web Template for Driver List -->
+    <template id="driver_list_template" name="Driver List">
+        <t t-call="web.layout">
+            <div class="container">
+                <h1>Driver List</h1>
+                <!-- Search Form -->
+                <form method="GET" action="/profiles/drivers" class="mb-3">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <input type="text" name="first_name" class="form-control" placeholder="First Name" t-att-value="kwargs.get('first_name', '')"/>
+                        </div>
+                        <div class="col-md-4">
+                            <input type="text" name="last_name" class="form-control" placeholder="Last Name" t-att-value="kwargs.get('last_name', '')"/>
+                        </div>
+                        <div class="col-md-4">
+                            <button type="submit" class="btn btn-primary">Search</button>
+                            <a href="/profiles/drivers" class="btn btn-secondary">Clear</a>
+                        </div>
+                    </div>
+                </form>
+                <a href="/profiles/driver/new" class="btn btn-primary mb-3">Create New Driver</a>
+                <t t-if="not drivers">
+                    <div class="alert alert-warning">
+                        <t t-if="kwargs.get('first_name') or kwargs.get('last_name')">
+                            No drivers found matching the search criteria: 
+                            <t t-if="kwargs.get('first_name')">First Name: <t t-esc="kwargs.get('first_name')"/></t>
+                            <t t-if="kwargs.get('last_name')">, Last Name: <t t-esc="kwargs.get('last_name')"/></t>.
+                            Data sync may also be in progress or failed.
+                        </t>
+                        <t t-else="">
+                            No drivers found. Data sync may be in progress or failed.
+                        </t>
+                    </div>
+                </t>
+                <t t-else="">
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>First Name</th>
+                                <th>Last Name</th>
+                                <th>Phone Number</th>
+                                <th>Driver Number</th>
+                                <th>Username</th>
+                                <th>Last Synced</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-foreach="drivers" t-as="driver">
+                                <tr>
+                                    <td><t t-esc="driver.external_id"/></td>
+                                    <td><t t-esc="driver.first_name or 'N/A'"/></td>
+                                    <td><t t-esc="driver.last_name or 'N/A'"/></td>
+                                    <td><t t-esc="driver.phone_number"/></td>
+                                    <td><t t-esc="driver.driver_number"/></td>
+                                    <td><t t-esc="driver.username"/></td>
+                                    <td><t t-esc="driver.last_sync"/></td>
+                                    <td>
+                                        <a t-att-href="'/profiles/driver/' + str(driver.external_id)">View Details</a>
+                                        | <a t-att-href="'/profiles/driver/delete/' + str(driver.external_id)" onclick="return confirm('Are you sure you want to delete this driver?')">Delete</a>
+                                    </td>
+                                </tr>
+                            </t>
+                        </tbody>
+                    </table>
+                </t>
+            </div>
+        </t>
+    </template>
+
+    <!-- Web Template for Driver Details -->
+    <template id="driver_details_template" name="Driver Details">
+        <t t-call="web.layout">
+            <div class="container">
+                <h1>Driver Details</h1>
+                <div class="card">
+                    <div class="card-body">
+                        <p><strong>ID:</strong> <t t-esc="driver.external_id"/></p>
+                        <p><strong>First Name:</strong> <t t-esc="driver.first_name or 'N/A'"/></p>
+                        <p><strong>Last Name:</strong> <t t-esc="driver.last_name or 'N/A'"/></p>
+                        <p><strong>Phone Number:</strong> <t t-esc="driver.phone_number"/></p>
+                        <p><strong>Driver Number:</strong> <t t-esc="driver.driver_number"/></p>
+                        <p><strong>Rides:</strong> <t t-esc="driver.rides or 'None'"/></p>
+                        <p><strong>Username:</strong> <t t-esc="driver.username"/></p>
+                        <p><strong>Password:</strong> <t t-esc="'****'"/></p>
+                        <p><strong>Last Synced:</strong> <t t-esc="driver.last_sync"/></p>
+                        <a href="/profiles/drivers" class="btn btn-primary">Back to List</a>
+                        <a t-att-href="'/profiles/driver/edit/' + str(driver.id)" class="btn btn-secondary">Edit</a>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- Web Form for Creating Drivers -->
+    <template id="driver_create_form_template" name="Create Driver">
+        <t t-call="web.layout">
+            <div class="container">
+                <h1>Create Driver</h1>
+                <form method="POST" action="/profiles/driver/create">
+                    <div class="form-group">
+                        <label for="first_name">First Name</label>
+                        <input type="text" id="first_name" name="first_name" class="form-control" required="required"/>
+                    </div>
+                    <div class="form-group">
+                        <label for="last_name">Last Name</label>
+                        <input type="text" id="last_name" name="last_name" class="form-control" required="required"/>
+                    </div>
+                    <div class="form-group">
+                        <label for="phone_number">Phone Number</label>
+                        <input type="text" id="phone_number" name="phone_number" class="form-control" required="required"/>
+                    </div>
+                    <div class="form-group">
+                        <label for="driver_number">Driver Number</label>
+                        <input type="text" id="driver_number" name="driver_number" class="form-control" required="required"/>
+                    </div>
+                    <div class="form-group">
+                        <label for="rides">Rides (JSON)</label>
+                        <textarea id="rides" name="rides" class="form-control">[]</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" class="form-control" required="required"/>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" class="form-control" required="required"/>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Create</button>
+                    <a href="/profiles/drivers" class="btn btn-secondary">Cancel</a>
+                </form>
+            </div>
+        </t>
+    </template>
+
+    <!-- Web Form for Editing Drivers -->
+    <template id="driver_edit_form_template" name="Edit Driver">
+        <t t-call="web.layout">
+            <form method="POST" t-att-action="'/profiles/driver/edit/' + str(driver.id)">
+                <div class="container">
+                    <h1>Edit Driver</h1>
+                    <div class="form-group">
+                        <label for="first_name">First Name</label>
+                        <input type="text" id="first_name" name="first_name" t-att-value="driver.first_name or ''" required="required" class="form-control"/>
+                    </div>
+                    <div class="form-group">
+                        <label for="last_name">Last Name</label>
+                        <input type="text" id="last_name" name="last_name" t-att-value="driver.last_name or ''" required="required" class="form-control"/>
+                    </div>
+                    <div class="form-group">
+                        <label for="phone_number">Phone Number</label>
+                        <input type="text" id="phone_number" name="phone_number" t-att-value="driver.phone_number" required="required" class="form-control"/>
+                    </div>
+                    <div class="form-group">
+                        <label for="driver_number">Driver Number</label>
+                        <input type="text" id="driver_number" name="driver_number" t-att-value="driver.driver_number" required="required" class="form-control"/>
+                    </div>
+                    <div class="form-group">
+                        <label for="rides">Rides (JSON)</label>
+                        <textarea id="rides" name="rides" class="form-control" t-t-esc="driver.rides or '[]'"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" t-att-value="driver.username" required="required" class="form-control"/>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" class="form-control"/>
+                        <small class="form-text text-muted">Leave blank to keep current password.</small>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Update</button>
+                    <a href="/profiles/drivers" class="btn btn-secondary">Cancel</a>
+                </div>
+            </form>
+        </t>
+    </template>
+</odoo>
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\views\profile_passenger_cron.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Scheduled Action for Passenger Sync -->
+    <record id="cron_sync_passengers" model="ir.cron">
+        <field name="name">Sync Passenger Profiles</field>
+        <field name="model_id" ref="model_profile_passenger"/>
+        <field name="state">code</field>
+        <field name="code">model.sync_passengers()</field>
+        <field name="interval_number">5</field>
+        <field name="interval_type">minutes</field>
+        <field name="numbercall">-1</field>
+        <field name="doall">True</field>
+        <field name="active">True</field>
+    </record>
+</odoo>
+
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\views\profile_passenger_views.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Tree View for Passenger List -->
+    <record id="view_passenger_tree" model="ir.ui.view">
+        <field name="name">profile.passenger.tree</field>
+        <field name="model">profile.passenger</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="external_id"/>
+                <field name="first_name"/>
+                <field name="last_name"/>
+                <field name="phone_number"/>
+                <field name="email"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form View for Passenger Details -->
+    <record id="view_passenger_form" model="ir.ui.view">
+        <field name="name">profile.passenger.form</field>
+        <field name="model">profile.passenger</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="external_id"/>
+                        <field name="first_name"/>
+                        <field name="last_name"/>
+                        <field name="phone_number"/>
+                        <field name="email"/>
+                        <field name="rides"/>
+                        <field name="favourites"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action for Passenger List -->
+    <record id="action_passenger_list" model="ir.actions.act_window">
+        <field name="name">Passengers</field>
+        <field name="res_model">profile.passenger</field>
+        <field name="view_mode">tree,form</field>
+        <field name="view_id" ref="view_passenger_tree"/>
+    </record>
+
+    <!-- Web Template for Passenger List -->
+    <template id="passenger_list_template" name="Passenger List">
+        <t t-call="web.layout">
+            <div class="container">
+                <h1>Passenger List</h1>
+                <t t-if="not passengers">
+                    <div class="alert alert-warning">
+                        No passengers found. Data sync may be in progress or failed.
+                    </div>
+                </t>
+                <t t-else="">
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>First Name</th>
+                                <th>Last Name</th>
+                                <th>Phone Number</th>
+                                <th>Email</th>
+                                <th>Last Synced</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-foreach="passengers" t-as="passenger">
+                                <tr>
+                                    <td><t t-esc="passenger.external_id"/></td>
+                                    <td><t t-esc="passenger.first_name or 'N/A'"/></td>
+                                    <td><t t-esc="passenger.last_name or 'N/A'"/></td>
+                                    <td><t t-esc="passenger.phone_number"/></td>
+                                    <td><t t-esc="passenger.email or 'N/A'"/></td>
+                                    <td>
+                                        <a t-att-href="'/profiles/passenger/' + str(passenger.external_id)">View Details</a>
+                                    </td>
+                                </tr>
+                            </t>
+                        </tbody>
+                    </table>
+                </t>
+            </div>
+        </t>
+    </template>
+
+    <!-- Web Template for Passenger Details -->
+    <template id="passenger_details_template" name="Passenger Details">
+        <t t-call="web.layout">
+            <div class="container">
+                <h1>Passenger Details</h1>
+                <div class="card">
+                    <div class="card-body">
+                        <p><strong>ID:</strong> <t t-esc="passenger.external_id"/></p>
+                        <p><strong>First Name:</strong> <t t-esc="passenger.first_name or 'N/A'"/></p>
+                        <p><strong>Last Name:</strong> <t t-esc="passenger.last_name or 'N/A'"/></p>
+                        <p><strong>Phone Number:</strong> <t t-esc="passenger.phone_number"/></p>
+                        <p><strong>Email:</strong> <t t-esc="passenger.email or 'N/A'"/></p>
+                        <p><strong>Rides:</strong> <t t-esc="passenger.rides or 'None'"/></p>
+                        <p><strong>Favourites:</strong> <t t-esc="passenger.favourites or 'None'"/></p>
+                        <a href="/profiles/passengers" class="btn btn-primary">Back to List</a>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- Error Template -->
+    <template id="error_template" name="Error">
+        <t t-call="web.layout">
+            <div class="container">
+                <h1>Error</h1>
+                <div class="alert alert-danger">
+                    <t t-esc="error"/>
+                </div>
+                <a href="/profiles/passengers" class="btn btn-primary">Back to Passenger List</a>
+            </div>
+        </t>
+    </template>
+</odoo>
+
+
+
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\__init__.py
+from . import models
+from . import controllers
+
+
+
+
+
+
+
+
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\__manifest__.py
+{
+    'name': 'Profiles Management',
+    'version': '1.0',
+    'category': 'Tools',
+    'summary': 'Manage passenger and driver profiles integrated with Ptrans Profile API',
+    'description': """
+        A module to manage passenger and driver profiles, providing functionalities to view passenger lists and details
+        by integrating with the Ptrans Profile API.
+    """,
+    'author': 'Kebiche fouez',
+    'depends': ['base', 'web'],
+    'data': [
+        'security/ir.model.access.csv',
+        'views/profile_passenger_views.xml',
+        'views/profile_driver_views.xml',
+        'views/profiles_management_menu.xml',
+        'views/profile_passenger_cron.xml',
+        'views/profile_driver_cron.xml',
+    ],
+    'assets': {
+        'web.assets_backend': [
+            'profiles_management/static/src/js/driver_search.js',
+        ],
+    },
+    'installable': True,
+    'application': True,
+    'auto_install': False,
+}

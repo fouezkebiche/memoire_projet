@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Tree View for Passenger List -->
+    <record id="view_passenger_tree" model="ir.ui.view">
+        <field name="name">profile.passenger.tree</field>
+        <field name="model">profile.passenger</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="external_id"/>
+                <field name="first_name"/>
+                <field name="last_name"/>
+                <field name="phone_number"/>
+                <field name="email"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form View for Passenger Details -->
+    <record id="view_passenger_form" model="ir.ui.view">
+        <field name="name">profile.passenger.form</field>
+        <field name="model">profile.passenger</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="external_id"/>
+                        <field name="first_name"/>
+                        <field name="last_name"/>
+                        <field name="phone_number"/>
+                        <field name="email"/>
+                        <field name="rides"/>
+                        <field name="favourites"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action for Passenger List -->
+    <record id="action_passenger_list" model="ir.actions.act_window">
+        <field name="name">Passengers</field>
+        <field name="res_model">profile.passenger</field>
+        <field name="view_mode">tree,form</field>
+        <field name="view_id" ref="view_passenger_tree"/>
+    </record>
+
+    <!-- Web Template for Passenger List -->
+    <template id="passenger_list_template" name="Passenger List">
+        <t t-call="web.layout">
+            <div class="container">
+                <h1>Passenger List</h1>
+                <t t-if="not passengers">
+                    <div class="alert alert-warning">
+                        No passengers found. Data sync may be in progress or failed.
+                    </div>
+                </t>
+                <t t-else="">
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>First Name</th>
+                                <th>Last Name</th>
+                                <th>Phone Number</th>
+                                <th>Email</th>
+                                <th>Last Synced</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-foreach="passengers" t-as="passenger">
+                                <tr>
+                                    <td><t t-esc="passenger.external_id"/></td>
+                                    <td><t t-esc="passenger.first_name or 'N/A'"/></td>
+                                    <td><t t-esc="passenger.last_name or 'N/A'"/></td>
+                                    <td><t t-esc="passenger.phone_number"/></td>
+                                    <td><t t-esc="passenger.email or 'N/A'"/></td>
+                                    <td>
+                                        <a t-att-href="'/profiles/passenger/' + str(passenger.external_id)">View Details</a>
+                                    </td>
+                                </tr>
+                            </t>
+                        </tbody>
+                    </table>
+                </t>
+            </div>
+        </t>
+    </template>
+
+    <!-- Web Template for Passenger Details -->
+    <template id="passenger_details_template" name="Passenger Details">
+        <t t-call="web.layout">
+            <div class="container">
+                <h1>Passenger Details</h1>
+                <div class="card">
+                    <div class="card-body">
+                        <p><strong>ID:</strong> <t t-esc="passenger.external_id"/></p>
+                        <p><strong>First Name:</strong> <t t-esc="passenger.first_name or 'N/A'"/></p>
+                        <p><strong>Last Name:</strong> <t t-esc="passenger.last_name or 'N/A'"/></p>
+                        <p><strong>Phone Number:</strong> <t t-esc="passenger.phone_number"/></p>
+                        <p><strong>Email:</strong> <t t-esc="passenger.email or 'N/A'"/></p>
+                        <p><strong>Rides:</strong> <t t-esc="passenger.rides or 'None'"/></p>
+                        <p><strong>Favourites:</strong> <t t-esc="passenger.favourites or 'None'"/></p>
+                        <a href="/profiles/passengers" class="btn btn-primary">Back to List</a>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- Error Template -->
+    <template id="error_template" name="Error">
+        <t t-call="web.layout">
+            <div class="container">
+                <h1>Error</h1>
+                <div class="alert alert-danger">
+                    <t t-esc="error"/>
+                </div>
+                <a href="/profiles/passengers" class="btn btn-primary">Back to Passenger List</a>
+            </div>
+        </t>
+    </template>
+</odoo>
