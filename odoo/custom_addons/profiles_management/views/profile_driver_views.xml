@@ -12,7 +12,6 @@
                 <field name="phone_number"/>
                 <field name="driver_number"/>
                 <field name="username"/>
-                <field name="last_sync"/>
             </tree>
         </field>
     </record>
@@ -47,7 +46,6 @@
                         <field name="rides"/>
                         <field name="username"/>
                         <field name="password" widget="password"/>
-                        <field name="last_sync" readonly="1"/>
                     </group>
                 </sheet>
             </form>
@@ -120,7 +118,6 @@
                                     <td><t t-esc="driver.phone_number"/></td>
                                     <td><t t-esc="driver.driver_number"/></td>
                                     <td><t t-esc="driver.username"/></td>
-                                    <td><t t-esc="driver.last_sync"/></td>
                                     <td>
                                         <a t-att-href="'/profiles/driver/' + str(driver.external_id)">View Details</a>
                                         | <a t-att-href="'/profiles/driver/delete/' + str(driver.external_id)" onclick="return confirm('Are you sure you want to delete this driver?')">Delete</a>
@@ -149,7 +146,6 @@
                         <p><strong>Rides:</strong> <t t-esc="driver.rides or 'None'"/></p>
                         <p><strong>Username:</strong> <t t-esc="driver.username"/></p>
                         <p><strong>Password:</strong> <t t-esc="'****'"/></p>
-                        <p><strong>Last Synced:</strong> <t t-esc="driver.last_sync"/></p>
                         <a href="/profiles/drivers" class="btn btn-primary">Back to List</a>
                         <a t-att-href="'/profiles/driver/edit/' + str(driver.id)" class="btn btn-secondary">Edit</a>
                     </div>
