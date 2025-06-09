@@ -143,7 +143,7 @@ class ProfileManagementController(http.Controller):
     @http.route('/profiles/driver/edit/<int:driver_id>', type='http', auth='user', methods=['GET'], website=True)
     def driver_edit_form(self, driver_id, **kwargs):
         try:
-            driver = request.env['profile.driver'].search([('external_id', '=', driver_id)], limit=1)
+            driver = request.env['profile.driver'].browse(driver_id)
             if not driver.exists():
                 return request.render('profiles_management.error_template', {
                     'error': 'Driver not found',
@@ -160,7 +160,7 @@ class ProfileManagementController(http.Controller):
     @http.route('/profiles/driver/edit/<int:driver_id>', type='http', auth='user', methods=['POST'], website=True)
     def driver_edit_submit(self, driver_id, **kwargs):
         try:
-            driver = request.env['profile.driver'].search([('external_id', '=', driver_id)], limit=1)
+            driver = request.env['profile.driver'].browse(driver_id)
             if not driver.exists():
                 raise UserError("Driver not found")
             values = {
@@ -184,8 +184,8 @@ class ProfileManagementController(http.Controller):
             ], limit=1)
             if existing:
                 raise UserError(f"Driver with phone number {values['phone_number']} and username {values['username']} already exists (external ID: {existing.external_id}).")
-            _logger.info("Submitting driver update for external_id %s with values: %s", driver_id, values)
-            request.env['profile.driver'].update_driver(driver.id, values)
+            _logger.info("Submitting driver update for driver_id %s with values: %s", driver_id, values)
+            request.env['profile.driver'].update_driver(driver_id, values)
             return request.redirect('/profiles/drivers')
         except Exception as e:
             _logger.error("Error updating driver for ID %s: %s", driver_id, str(e))

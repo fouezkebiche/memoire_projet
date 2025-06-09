@@ -198,7 +198,7 @@
     <!-- Web Form for Editing Drivers -->
     <template id="driver_edit_form_template" name="Edit Driver">
         <t t-call="web.layout">
-            <form method="POST" t-att-action="'/profiles/driver/edit/' + str(driver.id)">
+            <form method="POST" t-att-action="'/profiles/driver/edit/' + str(driver.external_id)">
                 <div class="container">
                     <h1>Edit Driver</h1>
                     <div class="form-group">

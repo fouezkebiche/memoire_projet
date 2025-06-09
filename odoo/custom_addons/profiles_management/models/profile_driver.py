@@ -28,7 +28,6 @@ class ProfileDriver(models.Model):
     def create(self, values):
         """Override create to ensure external_id is set via API."""
         if 'external_id' not in values or not values['external_id']:
-            # Check if a driver with the same phone_number and username exists
             existing = self.search([
                 ('phone_number', '=', values.get('phone_number')),
                 ('username', '=', values.get('username'))
@@ -37,10 +36,27 @@ class ProfileDriver(models.Model):
                 raise UserError(f"Driver with phone number {values.get('phone_number')} and username {values.get('username')} already exists (external ID: {existing.external_id}).")
             external_id = self._create_driver_via_api(values)
             values['external_id'] = external_id
-        # Double-check external_id uniqueness
         if self.search([('external_id', '=', values['external_id'])], limit=1):
             raise UserError(f"Driver with external ID {values['external_id']} already exists in Odoo.")
         return super(ProfileDriver, self).create(values)
+
+    def write(self, values):
+        """Override write to call update_driver after local update."""
+        result = super(ProfileDriver, self).write(values)
+        for record in self:
+            try:
+                # Skip API update if triggered by sync to avoid loops
+                if self._context.get('from_sync'):
+                    _logger.debug("Skipping API update for driver %s during sync", record.id)
+                    continue
+                # Call update_driver with the updated values
+                self.update_driver(record.id, values)
+                _logger.info("Driver %s updated via API after local write", record.id)
+            except Exception as e:
+                _logger.error("Failed to update driver %s via API: %s", record.id, str(e))
+                # Optionally raise an error to notify the user
+                # raise UserError(f"Failed to update driver via API: {str(e)}")
+        return result
 
     @api.model
     def fetch_driver_list(self):
@@ -82,7 +98,7 @@ class ProfileDriver(models.Model):
                 
                 existing = self.search([('external_id', '=', external_id)], limit=1)
                 if existing:
-                    existing.write(driver_data)
+                    existing.with_context(from_sync=True).write(driver_data)
                     driver_ids.append(existing.id)
                     _logger.debug("Updated driver with external_id: %s", external_id)
                 else:
@@ -106,10 +122,10 @@ class ProfileDriver(models.Model):
         params = {}
         if first_name:
             params['first_name'] = first_name.strip()
-            params['firstName'] = first_name.strip()  # Try camelCase for API compatibility
+            params['firstName'] = first_name.strip()
         if last_name:
             params['last_name'] = last_name.strip()
-            params['lastName'] = last_name.strip()  # Try camelCase for API compatibility
+            params['lastName'] = last_name.strip()
         
         try:
             _logger.info("Fetching filtered drivers from API: %s with params: %s", api_url, params)
@@ -147,7 +163,7 @@ class ProfileDriver(models.Model):
                 
                 existing = self.search([('external_id', '=', external_id)], limit=1)
                 if existing:
-                    existing.write(driver_data)
+                    existing.with_context(from_sync=True).write(driver_data)
                     driver_ids.append(existing.id)
                     _logger.debug("Updated driver with external_id: %s", external_id)
                 else:
@@ -155,7 +171,6 @@ class ProfileDriver(models.Model):
                     driver_ids.append(new_record.id)
                     _logger.debug("Created new driver with external_id: %s", external_id)
 
-            # Verify if API filtered correctly
             filtered_drivers = self.browse(driver_ids)
             if first_name or last_name:
                 valid_results = True
@@ -181,10 +196,9 @@ class ProfileDriver(models.Model):
                     _logger.info("Local filtering returned %s drivers", len(driver_ids))
 
             _logger.info("Fetched %s filtered driver records", len(driver_ids))
-            return self.browse(driver_ids)
+            return filtered_drivers
         except requests.RequestException as e:
             _logger.error("API request failed for filtered drivers: %s", str(e))
-            # Fallback to local search if API fails
             _logger.info("Falling back to local driver search")
             domain = []
             if first_name:
@@ -201,9 +215,9 @@ class ProfileDriver(models.Model):
     @api.model
     def fetch_driver_details(self, external_id):
         """Fetch details of a specific driver by ID."""
-        api_url = f'http://147.93.52.105:9082/api/v1/profile/driver/{external_id}'
+        api_url = f'http://147.0.93.52.105:9082/api/v1/profile/driver/{external_id}'
         try:
-            _logger.info("Fetching driver details from: %s", api_url)
+            _logger.info("Fetching driver details from API: %s", api_url)
             response = requests.get(api_url, headers={'Content-Type': 'application/json'}, timeout=10)
             _logger.info("API GET %s response: %s status: %s", api_url, response.text, response.status_code)
             
@@ -212,12 +226,12 @@ class ProfileDriver(models.Model):
                 raise UserError("Driver not found")
             if response.status_code != 200:
                 _logger.error("Failed to fetch driver details: %s status: %s", response.text, response.status_code)
-                raise UserError(f"Failed to fetch driver details: {response.text} status: {response.status_code}")
+                raise UserError(f"Failed to fetch driver details: %s status: %s", response.text, response.status_code)
             
             driver = response.json()
             if not isinstance(driver, dict):
                 _logger.error("Invalid API response format: Expected dict, got %s", type(driver).__name__)
-                raise UserError(f"Invalid API response format: Expected dict, got {type(driver).__name__}")
+                raise UserError(f"Invalid API response format: {type(driver).__name__}")
 
             driver_data = {
                 'external_id': driver.get('id', 0),
@@ -233,7 +247,7 @@ class ProfileDriver(models.Model):
 
             existing = self.search([('external_id', '=', driver.get('id', 0))], limit=1)
             if existing:
-                existing.write(driver_data)
+                existing.with_context(from_sync=True).write(driver_data)
                 driver_id = existing.id
                 _logger.debug("Updated driver with external_id: %s", driver.get('id'))
             else:
@@ -271,18 +285,16 @@ class ProfileDriver(models.Model):
 
             if response.status_code != 201:
                 _logger.error("Failed to create driver: %s status: %s", response.text, response.status_code)
-                raise UserError(f"Failed to create driver: {response.text} status: {response.status_code}")
+                raise UserError(f"Failed to create driver: %s status: %s", response.text, response.status_code)
 
-            # Fetch driver list to find the new driver
-            time.sleep(2)  # Increased delay to ensure API sync
+            time.sleep(2)
             response = requests.get(api_url, headers={'Content-Type': 'application/json'}, timeout=10)
             if response.status_code != 200:
-                raise UserError(f"Failed to fetch driver list after creation: {response.text} status: {response.status_code}")
+                raise UserError(f"Failed to fetch driver list after creation: %s status: %s", response.text, response.status_code)
             drivers = response.json()
             if not drivers:
                 raise UserError("No drivers found in API after creation")
 
-            # Find matching drivers
             matching_drivers = [
                 driver for driver in drivers
                 if (driver.get('phoneNumber') == driver_data['phoneNumber'] and
@@ -296,15 +308,13 @@ class ProfileDriver(models.Model):
                 _logger.error("No matching driver found for data: %s", driver_data)
                 raise UserError("Could not identify new driver in API response. Please check API data consistency.")
 
-            # Select the driver with the highest ID
             new_driver = max(matching_drivers, key=lambda d: d['id'])
             external_id = new_driver.get('id')
             _logger.info("Identified new driver with external_id: %s", external_id)
 
-            # Verify external_id doesn't exist in Odoo
             if self.search([('external_id', '=', external_id)], limit=1):
                 _logger.error("External ID %s already exists in Odoo", external_id)
-                raise UserError(f"Driver with external ID {external_id} already exists in Odoo.")
+                raise UserError(f"Driver with external ID %s already exists in Odoo.", external_id)
 
             return external_id
 
@@ -320,47 +330,73 @@ class ProfileDriver(models.Model):
         """Update a driver via API."""
         driver = self.browse(driver_id)
         if not driver.exists():
+            _logger.error("Driver with ID %s not found in Odoo", driver_id)
             raise UserError("Driver not found")
         
-        api_url = f'http://147.93.52.105:9082/api/v1/profile/driver/{driver.external_id}'
+        api_url = 'http://147.93.52.105:9082/api/v1/profile/driver'
         try:
+            # Handle rides field
+            rides = values.get('rides', driver.rides or '[]')
+            try:
+                rides_list = eval(rides) if isinstance(rides, str) else rides
+                if not isinstance(rides_list, list):
+                    _logger.error("Rides data for driver %s is not a list: %s", driver_id, rides_list)
+                    raise ValueError("Rides must be a list")
+            except (ValueError, SyntaxError) as e:
+                _logger.error("Invalid rides data for driver %s: %s", driver_id, str(e))
+                raise UserError(f"Invalid rides data: {str(e)}")
+
+            # Prepare API payload with all required fields
             driver_data = {
                 'id': driver.external_id,
                 'firstName': values.get('first_name', driver.first_name) or '',
                 'lastName': values.get('last_name', driver.last_name) or '',
                 'phoneNumber': values.get('phone_number', driver.phone_number) or '',
                 'driverNumber': values.get('driver_number', driver.driver_number) or '',
-                'rides': eval(values.get('rides', driver.rides or '[]')) or [],
+                'rides': rides_list,
                 'username': values.get('username', driver.username) or '',
-                'password': values.get('password', driver.password) or '',
+                'password': values.get('password', driver.password) if values.get('password') else driver.password or '',
             }
+
+            # Validate required fields as per Swagger schema
+            required_fields = ['firstName', 'lastName', 'phoneNumber', 'driverNumber', 'rides', 'username', 'password']
+            missing = [field for field in required_fields if driver_data[field] is None or driver_data[field] == '']
+            if missing:
+                _logger.error("Missing required fields for driver %s API update: %s", driver_id, ', '.join(missing))
+                raise UserError(f"Missing required fields for API update: {', '.join(missing)}")
+
             _logger.info("Updating driver via API: %s with data: %s", api_url, driver_data)
             headers = {'Content-Type': 'application/json'}
             response = requests.put(api_url, json=driver_data, headers=headers, timeout=10)
             _logger.info("API PUT %s response: %s status: %s", api_url, response.text, response.status_code)
 
-            if response.status_code not in (200, 201, 204):
-                _logger.error("Failed to update driver: %s status: %s", response.text, response.status_code)
+            if response.status_code != 201:
+                _logger.error("Failed to update driver %s: %s status: %s", driver_id, response.text, response.status_code)
                 raise UserError(f"Failed to update driver: {response.text} status: {response.status_code}")
 
+            if response.text.strip() != '"Driver Successfully Updated"':
+                _logger.warning("Unexpected API response for driver %s update: %s", driver_id, response.text)
+
             # Update local record
-            driver.write({
+            local_values = {
                 'first_name': driver_data['firstName'],
                 'last_name': driver_data['lastName'],
                 'phone_number': driver_data['phoneNumber'],
                 'driver_number': driver_data['driverNumber'],
                 'rides': str(driver_data['rides']),
                 'username': driver_data['username'],
-                'password': driver_data['password'] if values.get('password') else driver.password,
                 'last_sync': fields.Datetime.now(),
-            })
-            _logger.info("Successfully updated driver with external_id: %s", driver.external_id)
+            }
+            if values.get('password'):
+                local_values['password'] = driver_data['password']
+            driver.with_context(from_sync=True).write(local_values)
+            _logger.info("Successfully updated driver with external_id: %s in Odoo and API", driver.external_id)
             return driver.id
         except requests.RequestException as e:
-            _logger.error("API request failed for driver update: %s", str(e))
+            _logger.error("API request failed for driver %s update: %s", driver_id, str(e))
             raise UserError(f"API request failed: {str(e)}")
         except ValueError as e:
-            _logger.error("Failed to parse API response or rides data: %s", str(e))
+            _logger.error("Failed to parse API response or rides data for driver %s: %s", driver_id, str(e))
             raise UserError(f"Invalid API response or rides data: {str(e)}")
 
     def unlink(self):

@@ -15,7 +15,7 @@
 
 
 
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\controllers\main.py
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_addons\profiles_management\controllers\main.py
 from odoo import http
 from odoo.http import request
 import logging
@@ -161,7 +161,7 @@ class ProfileManagementController(http.Controller):
     @http.route('/profiles/driver/edit/<int:driver_id>', type='http', auth='user', methods=['GET'], website=True)
     def driver_edit_form(self, driver_id, **kwargs):
         try:
-            driver = request.env['profile.driver'].search([('external_id', '=', driver_id)], limit=1)
+            driver = request.env['profile.driver'].browse(driver_id)
             if not driver.exists():
                 return request.render('profiles_management.error_template', {
                     'error': 'Driver not found',
@@ -178,7 +178,7 @@ class ProfileManagementController(http.Controller):
     @http.route('/profiles/driver/edit/<int:driver_id>', type='http', auth='user', methods=['POST'], website=True)
     def driver_edit_submit(self, driver_id, **kwargs):
         try:
-            driver = request.env['profile.driver'].search([('external_id', '=', driver_id)], limit=1)
+            driver = request.env['profile.driver'].browse(driver_id)
             if not driver.exists():
                 raise UserError("Driver not found")
             values = {
@@ -202,8 +202,8 @@ class ProfileManagementController(http.Controller):
             ], limit=1)
             if existing:
                 raise UserError(f"Driver with phone number {values['phone_number']} and username {values['username']} already exists (external ID: {existing.external_id}).")
-            _logger.info("Submitting driver update for external_id %s with values: %s", driver_id, values)
-            request.env['profile.driver'].update_driver(driver.id, values)
+            _logger.info("Submitting driver update for driver_id %s with values: %s", driver_id, values)
+            request.env['profile.driver'].update_driver(driver_id, values)
             return request.redirect('/profiles/drivers')
         except Exception as e:
             _logger.error("Error updating driver for ID %s: %s", driver_id, str(e))
@@ -233,7 +233,7 @@ class ProfileManagementController(http.Controller):
 
 
 
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\controllers\__init__.py
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_addons\profiles_management\controllers\__init__.py
 from . import main
 
 
@@ -253,7 +253,7 @@ from . import main
 
 
 
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\models\profile_driver.py
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_addons\profiles_management\models\profile_driver.py
 from odoo import models, fields, api
 import requests
 import logging
@@ -284,7 +284,6 @@ class ProfileDriver(models.Model):
     def create(self, values):
         """Override create to ensure external_id is set via API."""
         if 'external_id' not in values or not values['external_id']:
-            # Check if a driver with the same phone_number and username exists
             existing = self.search([
                 ('phone_number', '=', values.get('phone_number')),
                 ('username', '=', values.get('username'))
@@ -293,10 +292,27 @@ class ProfileDriver(models.Model):
                 raise UserError(f"Driver with phone number {values.get('phone_number')} and username {values.get('username')} already exists (external ID: {existing.external_id}).")
             external_id = self._create_driver_via_api(values)
             values['external_id'] = external_id
-        # Double-check external_id uniqueness
         if self.search([('external_id', '=', values['external_id'])], limit=1):
             raise UserError(f"Driver with external ID {values['external_id']} already exists in Odoo.")
         return super(ProfileDriver, self).create(values)
+
+    def write(self, values):
+        """Override write to call update_driver after local update."""
+        result = super(ProfileDriver, self).write(values)
+        for record in self:
+            try:
+                # Skip API update if triggered by sync to avoid loops
+                if self._context.get('from_sync'):
+                    _logger.debug("Skipping API update for driver %s during sync", record.id)
+                    continue
+                # Call update_driver with the updated values
+                self.update_driver(record.id, values)
+                _logger.info("Driver %s updated via API after local write", record.id)
+            except Exception as e:
+                _logger.error("Failed to update driver %s via API: %s", record.id, str(e))
+                # Optionally raise an error to notify the user
+                # raise UserError(f"Failed to update driver via API: {str(e)}")
+        return result
 
     @api.model
     def fetch_driver_list(self):
@@ -338,7 +354,7 @@ class ProfileDriver(models.Model):
                 
                 existing = self.search([('external_id', '=', external_id)], limit=1)
                 if existing:
-                    existing.write(driver_data)
+                    existing.with_context(from_sync=True).write(driver_data)
                     driver_ids.append(existing.id)
                     _logger.debug("Updated driver with external_id: %s", external_id)
                 else:
@@ -362,10 +378,10 @@ class ProfileDriver(models.Model):
         params = {}
         if first_name:
             params['first_name'] = first_name.strip()
-            params['firstName'] = first_name.strip()  # Try camelCase for API compatibility
+            params['firstName'] = first_name.strip()
         if last_name:
             params['last_name'] = last_name.strip()
-            params['lastName'] = last_name.strip()  # Try camelCase for API compatibility
+            params['lastName'] = last_name.strip()
         
         try:
             _logger.info("Fetching filtered drivers from API: %s with params: %s", api_url, params)
@@ -403,7 +419,7 @@ class ProfileDriver(models.Model):
                 
                 existing = self.search([('external_id', '=', external_id)], limit=1)
                 if existing:
-                    existing.write(driver_data)
+                    existing.with_context(from_sync=True).write(driver_data)
                     driver_ids.append(existing.id)
                     _logger.debug("Updated driver with external_id: %s", external_id)
                 else:
@@ -411,7 +427,6 @@ class ProfileDriver(models.Model):
                     driver_ids.append(new_record.id)
                     _logger.debug("Created new driver with external_id: %s", external_id)
 
-            # Verify if API filtered correctly
             filtered_drivers = self.browse(driver_ids)
             if first_name or last_name:
                 valid_results = True
@@ -437,10 +452,9 @@ class ProfileDriver(models.Model):
                     _logger.info("Local filtering returned %s drivers", len(driver_ids))
 
             _logger.info("Fetched %s filtered driver records", len(driver_ids))
-            return self.browse(driver_ids)
+            return filtered_drivers
         except requests.RequestException as e:
             _logger.error("API request failed for filtered drivers: %s", str(e))
-            # Fallback to local search if API fails
             _logger.info("Falling back to local driver search")
             domain = []
             if first_name:
@@ -457,9 +471,9 @@ class ProfileDriver(models.Model):
     @api.model
     def fetch_driver_details(self, external_id):
         """Fetch details of a specific driver by ID."""
-        api_url = f'http://147.93.52.105:9082/api/v1/profile/driver/{external_id}'
+        api_url = f'http://147.0.93.52.105:9082/api/v1/profile/driver/{external_id}'
         try:
-            _logger.info("Fetching driver details from: %s", api_url)
+            _logger.info("Fetching driver details from API: %s", api_url)
             response = requests.get(api_url, headers={'Content-Type': 'application/json'}, timeout=10)
             _logger.info("API GET %s response: %s status: %s", api_url, response.text, response.status_code)
             
@@ -473,7 +487,7 @@ class ProfileDriver(models.Model):
             driver = response.json()
             if not isinstance(driver, dict):
                 _logger.error("Invalid API response format: Expected dict, got %s", type(driver).__name__)
-                raise UserError(f"Invalid API response format: Expected dict, got {type(driver).__name__}")
+                raise UserError(f"Invalid API response format: {type(driver).__name__}")
 
             driver_data = {
                 'external_id': driver.get('id', 0),
@@ -489,7 +503,7 @@ class ProfileDriver(models.Model):
 
             existing = self.search([('external_id', '=', driver.get('id', 0))], limit=1)
             if existing:
-                existing.write(driver_data)
+                existing.with_context(from_sync=True).write(driver_data)
                 driver_id = existing.id
                 _logger.debug("Updated driver with external_id: %s", driver.get('id'))
             else:
@@ -529,8 +543,7 @@ class ProfileDriver(models.Model):
                 _logger.error("Failed to create driver: %s status: %s", response.text, response.status_code)
                 raise UserError(f"Failed to create driver: {response.text} status: {response.status_code}")
 
-            # Fetch driver list to find the new driver
-            time.sleep(2)  # Increased delay to ensure API sync
+            time.sleep(2)
             response = requests.get(api_url, headers={'Content-Type': 'application/json'}, timeout=10)
             if response.status_code != 200:
                 raise UserError(f"Failed to fetch driver list after creation: {response.text} status: {response.status_code}")
@@ -538,7 +551,6 @@ class ProfileDriver(models.Model):
             if not drivers:
                 raise UserError("No drivers found in API after creation")
 
-            # Find matching drivers
             matching_drivers = [
                 driver for driver in drivers
                 if (driver.get('phoneNumber') == driver_data['phoneNumber'] and
@@ -552,12 +564,10 @@ class ProfileDriver(models.Model):
                 _logger.error("No matching driver found for data: %s", driver_data)
                 raise UserError("Could not identify new driver in API response. Please check API data consistency.")
 
-            # Select the driver with the highest ID
             new_driver = max(matching_drivers, key=lambda d: d['id'])
             external_id = new_driver.get('id')
             _logger.info("Identified new driver with external_id: %s", external_id)
 
-            # Verify external_id doesn't exist in Odoo
             if self.search([('external_id', '=', external_id)], limit=1):
                 _logger.error("External ID %s already exists in Odoo", external_id)
                 raise UserError(f"Driver with external ID {external_id} already exists in Odoo.")
@@ -580,36 +590,56 @@ class ProfileDriver(models.Model):
         
         api_url = f'http://147.93.52.105:9082/api/v1/profile/driver/{driver.external_id}'
         try:
+            # Handle rides field
+            rides = values.get('rides', driver.rides or '[]')
+            try:
+                rides_list = eval(rides) if isinstance(rides, str) else rides
+                if not isinstance(rides_list, list):
+                    raise ValueError("Rides must be a list")
+            except (ValueError, SyntaxError) as e:
+                _logger.error("Invalid rides data for driver %s: %s", driver_id, str(e))
+                raise UserError(f"Invalid rides data: {str(e)}")
+
+            # Prepare API payload with all required fields
             driver_data = {
                 'id': driver.external_id,
                 'firstName': values.get('first_name', driver.first_name) or '',
                 'lastName': values.get('last_name', driver.last_name) or '',
                 'phoneNumber': values.get('phone_number', driver.phone_number) or '',
                 'driverNumber': values.get('driver_number', driver.driver_number) or '',
-                'rides': eval(values.get('rides', driver.rides or '[]')) or [],
+                'rides': rides_list,
                 'username': values.get('username', driver.username) or '',
-                'password': values.get('password', driver.password) or '',
+                'password': values.get('password', driver.password) if values.get('password') else driver.password or '',
             }
+
+            # Validate required fields
+            required_fields = ['firstName', 'lastName', 'phoneNumber', 'driverNumber', 'username']
+            missing = [field for field in required_fields if not driver_data[field]]
+            if missing:
+                raise UserError(f"Missing required fields for API update: {', '.join(missing)}")
+
             _logger.info("Updating driver via API: %s with data: %s", api_url, driver_data)
             headers = {'Content-Type': 'application/json'}
             response = requests.put(api_url, json=driver_data, headers=headers, timeout=10)
             _logger.info("API PUT %s response: %s status: %s", api_url, response.text, response.status_code)
 
-            if response.status_code not in (200, 201, 204):
+            if response.status_code not in (200, 204):
                 _logger.error("Failed to update driver: %s status: %s", response.text, response.status_code)
                 raise UserError(f"Failed to update driver: {response.text} status: {response.status_code}")
 
             # Update local record
-            driver.write({
+            local_values = {
                 'first_name': driver_data['firstName'],
                 'last_name': driver_data['lastName'],
                 'phone_number': driver_data['phoneNumber'],
                 'driver_number': driver_data['driverNumber'],
                 'rides': str(driver_data['rides']),
                 'username': driver_data['username'],
-                'password': driver_data['password'] if values.get('password') else driver.password,
                 'last_sync': fields.Datetime.now(),
-            })
+            }
+            if values.get('password'):
+                local_values['password'] = driver_data['password']
+            driver.with_context(from_sync=True).write(local_values)
             _logger.info("Successfully updated driver with external_id: %s", driver.external_id)
             return driver.id
         except requests.RequestException as e:
@@ -671,7 +701,7 @@ class ProfileDriver(models.Model):
 
 
 
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\models\profile_passenger.py
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_addons\profiles_management\models\profile_passenger.py
 from odoo import models, fields, api
 import requests
 import logging
@@ -827,7 +857,7 @@ class ProfilePassenger(models.Model):
 
 
 
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\models\__init__.py
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_addons\profiles_management\models\__init__.py
 from . import profile_passenger
 from . import profile_driver
 
@@ -848,7 +878,7 @@ from . import profile_driver
 
 
 
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\scripts\extract_code.js
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_addons\profiles_management\scripts\extract_code.js
 const fs = require('fs');
 const path = require('path');
 
@@ -910,7 +940,7 @@ console.log(`✅ Code extracted to: ${outputFile}`);
 
 
 
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\security\ir.model.access.csv
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_addons\profiles_management\security\ir.model.access.csv
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_profile_passenger,profile.passenger.access,model_profile_passenger,,1,0,0,0
 access_profile_driver,profile.driver.access,model_profile_driver,,1,1,1,1
@@ -950,7 +980,7 @@ access_profile_driver,profile.driver.access,model_profile_driver,,1,1,1,1
 
 
 
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\static\src\js\driver_search.js
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_addons\profiles_management\static\src\js\driver_search.js
 /** @odoo-module **/
 
 import { registry } from "@web/core/registry";
@@ -1019,7 +1049,7 @@ registry.category("view_controllers").add("driver_search_controller", DriverSear
 
 
 
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\views\profiles_management_menu.xml
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_addons\profiles_management\views\profiles_management_menu.xml
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <!-- Top Menu -->
@@ -1038,7 +1068,7 @@ registry.category("view_controllers").add("driver_search_controller", DriverSear
 
 
 
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\views\profile_driver_cron.xml
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_addons\profiles_management\views\profile_driver_cron.xml
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <!-- Scheduled Action for Driver Sync -->
@@ -1061,7 +1091,7 @@ registry.category("view_controllers").add("driver_search_controller", DriverSear
 
 
 
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\views\profile_driver_views.xml
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_addons\profiles_management\views\profile_driver_views.xml
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <!-- Tree View for Driver List -->
@@ -1069,14 +1099,13 @@ registry.category("view_controllers").add("driver_search_controller", DriverSear
         <field name="name">profile.driver.tree</field>
         <field name="model">profile.driver</field>
         <field name="arch" type="xml">
-            <tree>
+            <tree js_class="driver_search_controller">
                 <field name="external_id"/>
                 <field name="first_name"/>
                 <field name="last_name"/>
                 <field name="phone_number"/>
                 <field name="driver_number"/>
                 <field name="username"/>
-                <field name="last_sync"/>
             </tree>
         </field>
     </record>
@@ -1111,7 +1140,6 @@ registry.category("view_controllers").add("driver_search_controller", DriverSear
                         <field name="rides"/>
                         <field name="username"/>
                         <field name="password" widget="password"/>
-                        <field name="last_sync" readonly="1"/>
                     </group>
                 </sheet>
             </form>
@@ -1184,7 +1212,6 @@ registry.category("view_controllers").add("driver_search_controller", DriverSear
                                     <td><t t-esc="driver.phone_number"/></td>
                                     <td><t t-esc="driver.driver_number"/></td>
                                     <td><t t-esc="driver.username"/></td>
-                                    <td><t t-esc="driver.last_sync"/></td>
                                     <td>
                                         <a t-att-href="'/profiles/driver/' + str(driver.external_id)">View Details</a>
                                         | <a t-att-href="'/profiles/driver/delete/' + str(driver.external_id)" onclick="return confirm('Are you sure you want to delete this driver?')">Delete</a>
@@ -1213,7 +1240,6 @@ registry.category("view_controllers").add("driver_search_controller", DriverSear
                         <p><strong>Rides:</strong> <t t-esc="driver.rides or 'None'"/></p>
                         <p><strong>Username:</strong> <t t-esc="driver.username"/></p>
                         <p><strong>Password:</strong> <t t-esc="'****'"/></p>
-                        <p><strong>Last Synced:</strong> <t t-esc="driver.last_sync"/></p>
                         <a href="/profiles/drivers" class="btn btn-primary">Back to List</a>
                         <a t-att-href="'/profiles/driver/edit/' + str(driver.id)" class="btn btn-secondary">Edit</a>
                     </div>
@@ -1266,7 +1292,7 @@ registry.category("view_controllers").add("driver_search_controller", DriverSear
     <!-- Web Form for Editing Drivers -->
     <template id="driver_edit_form_template" name="Edit Driver">
         <t t-call="web.layout">
-            <form method="POST" t-att-action="'/profiles/driver/edit/' + str(driver.id)">
+            <form method="POST" t-att-action="'/profiles/driver/edit/' + str(driver.external_id)">
                 <div class="container">
                     <h1>Edit Driver</h1>
                     <div class="form-group">
@@ -1312,7 +1338,7 @@ registry.category("view_controllers").add("driver_search_controller", DriverSear
 
 
 
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\views\profile_passenger_cron.xml
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_addons\profiles_management\views\profile_passenger_cron.xml
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <!-- Scheduled Action for Passenger Sync -->
@@ -1336,7 +1362,7 @@ registry.category("view_controllers").add("driver_search_controller", DriverSear
 
 
 
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\views\profile_passenger_views.xml
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_addons\profiles_management\views\profile_passenger_views.xml
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <!-- Tree View for Passenger List -->
@@ -1470,7 +1496,7 @@ registry.category("view_controllers").add("driver_search_controller", DriverSear
 
 
 
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\__init__.py
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_addons\profiles_management\__init__.py
 from . import models
 from . import controllers
 
@@ -1481,7 +1507,7 @@ from . import controllers
 
 
 
-// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_Addons\profiles_management\__manifest__.py
+// C:\Users\kebic\OneDrive\Desktop\rest_api_v1\odoo-project\odoo\custom_addons\profiles_management\__manifest__.py
 {
     'name': 'Profiles Management',
     'version': '1.0',
